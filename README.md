@@ -14,8 +14,9 @@ triangulo-voxel, pero deja armado el flujo paralelo y las metricas para el infor
 ## Paralelizacion
 
 - Rank 0 carga la malla con Assimp y aplana las caras en un arreglo de `Triangle`.
-- Rank 0 difunde triangulos y bounding box global a todos los procesos con `MPI_Bcast`.
-- Cada rank procesa un rango contiguo de triangulos.
+- Rank 0 reparte rangos contiguos de triangulos con `MPI_Scatterv`.
+- Rank 0 difunde el bounding box global con `MPI_Bcast`.
+- Cada rank procesa solo sus triangulos locales.
 - Cada rank produce una grilla local de bits.
 - Rank 0 combina las grillas con `MPI_Reduce` y `MPI_BOR`.
 
@@ -38,10 +39,13 @@ nix shell nixpkgs#cmake nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi -c cma
 ```bash
 mpirun -np 1 ./build/voxelization models/triangle.obj 32
 mpirun -np 2 ./build/voxelization models/triangle.obj 32
+mkdir -p outputs
+mpirun -np 4 ./build/voxelization models/blocky_creeper_like.obj 96 outputs/creeper_96.pgm
 ```
 
 La salida incluye triangulos, procesos, resolucion, voxels ocupados, tiempo de voxelizacion
-y FLOPs estimados.
+y FLOPs estimados. Si se pasa un tercer argumento, se genera una proyeccion 2D `.pgm`
+de la grilla voxelizada vista desde el eje `z`.
 
 ## Modelos de prueba
 
@@ -69,6 +73,9 @@ El analisis esperado en el informe debe presentarse como:
 ```text
 metodo -> particionamiento -> comunicacion -> Tp = Tcomp + Tcomm -> S -> E -> escalabilidad
 ```
+
+Para una explicacion mas detallada de `rank`, `k`, `m*k/p`, OR global y complejidad,
+leer `docs/COURSE_ANALYSIS.md`.
 
 ## Betas para el informe parcial
 

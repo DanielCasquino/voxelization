@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <numeric>
+#include <string>
 #include <vector>
 #include "voxelize.h"
 
@@ -46,6 +48,32 @@ std::vector<int> BuildDisplacements(const std::vector<int> &counts)
         displacements[i] = displacements[i - 1] + counts[i - 1];
     return displacements;
 }
+
+bool TestBit(const std::vector<uint64_t> &bits, uint64_t index)
+{
+    return (bits[index / 64] & (uint64_t{1} << (index % 64))) != 0;
+}
+
+void WriteZProjectionPGM(const std::string &path, const std::vector<uint64_t> &grid, int resolution)
+{
+    std::ofstream out(path);
+    out << "P2\n" << resolution << " " << resolution << "\n255\n";
+    for (int y = resolution - 1; y >= 0; --y)
+    {
+        for (int x = 0; x < resolution; ++x)
+        {
+            bool occupied = false;
+            for (int z = 0; z < resolution && !occupied; ++z)
+            {
+                const uint64_t index = static_cast<uint64_t>(z) * resolution * resolution +
+                                       static_cast<uint64_t>(y) * resolution +
+                                       static_cast<uint64_t>(x);
+                occupied = TestBit(grid, index);
+            }
+            out << (occupied ? 0 : 255) << (x + 1 == resolution ? '\n' : ' ');
+        }
+    }
+}
 }
 
 int main(int argc, char *argv[])
@@ -67,7 +95,7 @@ int main(int argc, char *argv[])
     if (argc < 2)
     {
         if (rank == 0)
-            std::fprintf(stderr, "Usage: %s <mesh-file> [resolution]\n", argv[0]);
+            std::fprintf(stderr, "Usage: %s <mesh-file> [resolution] [projection.pgm]\n", argv[0]);
         MPI_Finalize();
         return 1;
     }
@@ -176,6 +204,12 @@ int main(int argc, char *argv[])
         std::printf("load_seconds=%.6f\n", load_seconds);
         std::printf("voxel_seconds=%.6f\n", max_voxel_seconds);
         std::printf("estimated_flops_per_second=%.2f\n", flops_per_second);
+
+        if (argc >= 4)
+        {
+            WriteZProjectionPGM(argv[3], global_grid, resolution);
+            std::printf("projection=%s\n", argv[3]);
+        }
     }
 
     MPI_Type_free(&triangle_type);

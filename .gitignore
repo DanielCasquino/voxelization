@@ -1,4 +1,5 @@
 .vscode
 /bunny
 /build
+/outputs
 /models/stanford-bunny/*.ply
