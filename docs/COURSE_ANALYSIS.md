@@ -21,6 +21,19 @@ Ejemplo: si corro `mpirun -np 4`, entonces `p = 4` y existen ranks `0, 1, 2, 3`.
 Queremos repartir `m` triangulos entre `p` procesos sin solaparlos y sin perder ninguno.
 La idea es partir el intervalo de indices `[0, m)` en `p` subintervalos contiguos.
 
+Una forma intuitiva de leerlo es:
+
+```text
+triangulos_por_proceso ~= m/p
+start_k ~= k * triangulos_por_proceso
+```
+
+Por eso puede parecer mas natural escribir mentalmente `floor((m/p)*k)`: primero pienso
+"cuanto le toca a cada proceso" y luego "donde empieza el proceso k". La razon por la que
+el codigo usa `floor(m*k/p)` es evitar que la division entera corte decimales demasiado
+pronto. Matematicamente, `floor(k*m/p)` reparte los sobrantes de forma balanceada cuando
+`m` no es multiplo de `p`.
+
 Para el proceso `k`:
 
 ```text
@@ -227,8 +240,11 @@ Tp = O(B/p + p(alpha + (m/p) beta) + log p(alpha + w beta))
 
 Notas sobre esos terminos:
 
-- `B` no es la cantidad de voxels de la grilla final. La grilla final tiene `r^3` voxels.
-  `B` es el trabajo total que hacen los triangulos: para cada triangulo miramos su bounding
+- `occupied_voxels` no es lo mismo que `B`. `occupied_voxels` cuenta cuantos voxels quedan
+  pintados al final, despues del OR global. `B` cuenta trabajo: cuantas posiciones candidatas
+  se recorrieron durante el algoritmo. Si dos triangulos pintan el mismo voxel, ese voxel
+  cuenta una vez en `occupied_voxels`, pero puede haber sido revisado varias veces en `B`.
+- `B` es el trabajo total que hacen los triangulos: para cada triangulo miramos su bounding
   box discreto, y `b_i` cuenta cuantos voxels candidatos revisa ese triangulo. Entonces
   `B = sum_i b_i`. Si los triangulos son chicos, `B` puede ser mucho menor que `m*r^3`.
   Si hay un triangulo enorme, su `b_i` puede ser grande.
@@ -298,6 +314,20 @@ conserva la estructura actual y conecta directamente con el analisis `B = sum_i 
 Implementarla no es imprescindible para la primera version, pero si nos piden escalabilidad,
 es la mejora mas facil de defender.
 
+El caso de un solo triangulo gigante muestra el limite de la opcion 3: si `m = 1` y ese
+triangulo cubre casi toda la grilla, no hay forma de balancear por triangulos porque solo
+existe una unidad de trabajo. Para ese caso se necesita partir por voxels o por bloques
+espaciales. Una version final mas fuerte puede tener dos modos:
+
+```text
+si hay muchos triangulos pequenos -> particion por triangulos
+si hay pocos triangulos grandes   -> particion por bloques de voxels
+```
+
+La decision se puede tomar con una etapa EDA antes de voxelizar: calcular los `b_i`, mirar
+`max(b_i)`, `mean(b_i)` y que porcentaje del trabajo esta concentrado en los triangulos mas
+grandes. Si el trabajo esta muy concentrado, conviene activar modo espacial.
+
 ## Visualizacion
 
 El tercer argumento del binario escribe una proyeccion `.pgm`:
@@ -323,6 +353,17 @@ Para la exposicion, lo mas pragmatico es exportar `.obj` o `.ply` de voxels ocup
 con Blender/MeshLab solo como herramienta de visualizacion. El algoritmo paralelo no debe
 depender de Blender.
 
+Para mantenerlo multi-OS, el repositorio debe separar:
+
+- codigo C++/MPI portable;
+- scripts Python reproducibles para metricas y graficas;
+- outputs generados en `results/` y `outputs/`;
+- instrucciones por sistema operativo en documentacion, no en el algoritmo.
+
+En NixOS podemos usar `nix shell` para CMake, OpenMPI, Assimp, Python y matplotlib. En macOS,
+Stewart puede usar Homebrew/CLion. En Windows, la ruta mas limpia suele ser WSL2 o Docker,
+porque MPI + Assimp nativo en Windows agrega friccion.
+
 ## Morton / Z-order
 
 Morton order, tambien llamado Z-order, reordena coordenadas 3D intercalando bits de `x`, `y`
@@ -347,3 +388,38 @@ Se deja Morton/Z-order como trabajo futuro. Puede mejorar localidad de memoria y
 una particion espacial por bloques, pero no cambia por si sola el costo asintotico de reducir
 la grilla completa en la version actual.
 ```
+
+## Condicionamiento de modelos
+
+Para hablar de modelos "buenos" o "malos" para nuestra particion, conviene medir la
+distribucion de trabajo por triangulo. El proxy mas directo no es volumen del triangulo,
+porque un triangulo es una superficie 2D. Lo que si usamos es el volumen discreto de su
+bounding box en la grilla:
+
+```text
+b_i = (#voxels en AABB discreto del triangulo i)
+```
+
+Con eso se pueden reportar metricas:
+
+- `mean_b`: trabajo promedio por triangulo.
+- `max_b`: peor triangulo.
+- `max_b / mean_b`: indicador simple de desbalance.
+- `cv_b = stddev_b / mean_b`: variabilidad relativa.
+- `top_1_percent_work`: porcentaje de `B` explicado por el 1% de triangulos mas costosos.
+
+Modelo bien condicionado para particion por triangulos:
+
+```text
+max_b / mean_b bajo, cv_b bajo, top_1_percent_work bajo
+```
+
+Modelo mal condicionado:
+
+```text
+un triangulo o pocos triangulos concentran gran parte de B
+```
+
+Para probar el peor caso podemos crear un modelo plano tipo triangulo gigante: un solo
+triangulo que cubra casi todo el bounding box. Ese caso deberia mostrar que repartir por
+triangulos no escala, y sirve para justificar el modo espacial como trabajo futuro.

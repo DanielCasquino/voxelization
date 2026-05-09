@@ -77,6 +77,14 @@ metodo -> particionamiento -> comunicacion -> Tp = Tcomp + Tcomm -> S -> E -> es
 Para una explicacion mas detallada de `rank`, `k`, `m*k/p`, OR global y complejidad,
 leer `docs/COURSE_ANALYSIS.md`.
 
+Para revisar el codigo paso a paso antes de adaptarlo a un estilo mas compacto, leer
+`docs/CODE_WALKTHROUGH.md`.
+
+Para correr experimentos y generar graficas, leer `README_2.md`. Los resultados
+consolidados estan en `results/metrics.csv` y `results/plots/`.
+
+El informe debe vivir en `report/`.
+
 ## Betas para el informe parcial
 
 1. Beta 1: carga de malla con Assimp y conversion a arreglo de triangulos.

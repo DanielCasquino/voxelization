@@ -1,5 +1,13 @@
 .vscode
 /bunny
 /build
+/cmake-build-debug
 /outputs
 /models/stanford-bunny/*.ply
+/results/raw
+/results/.matplotlib
+/report/build
+*.aux
+*.log
+*.out
+*.toc
