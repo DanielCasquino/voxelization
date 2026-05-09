@@ -1,0 +1,12 @@
+$ /opt/homebrew/bin/mpirun -np 8 cmake-build-debug/voxelization models/stanford_bunny.ply 96
+
+mesh=models/stanford_bunny.ply
+triangles=69451
+processes=8
+resolution=96
+occupied_voxels=50563
+tested_voxels=336146
+estimated_flops=1008438
+load_seconds=0.039657
+voxel_seconds=0.004434
+estimated_flops_per_second=227433017.59

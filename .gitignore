@@ -1,3 +1,8 @@
 .vscode
 /bunny
 /build
+/cmake-build-debug
+/.venv
+__pycache__
+*.pyc
+/results/.matplotlib
