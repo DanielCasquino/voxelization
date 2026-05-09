@@ -24,6 +24,4 @@ Bounds ComputeBounds(const std::vector<Triangle> &triangles);
 std::vector<uint64_t> Voxelize(const std::vector<Triangle> &triangles,
                                int resolution,
                                const Bounds &bounds,
-                               int rank,
-                               int world_size,
                                VoxelStats &stats);

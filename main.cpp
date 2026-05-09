@@ -5,8 +5,48 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <numeric>
 #include <vector>
 #include "voxelize.h"
+
+namespace
+{
+MPI_Datatype CreateTriangleType()
+{
+    MPI_Datatype triangle_type;
+    MPI_Type_contiguous(9, MPI_FLOAT, &triangle_type);
+    MPI_Type_commit(&triangle_type);
+    return triangle_type;
+}
+
+MPI_Datatype CreateBoundsType()
+{
+    MPI_Datatype bounds_type;
+    MPI_Type_contiguous(6, MPI_FLOAT, &bounds_type);
+    MPI_Type_commit(&bounds_type);
+    return bounds_type;
+}
+
+std::vector<int> BuildCounts(uint64_t total, int size)
+{
+    std::vector<int> counts(size, 0);
+    for (int rank = 0; rank < size; ++rank)
+    {
+        const uint64_t start = (total * static_cast<uint64_t>(rank)) / static_cast<uint64_t>(size);
+        const uint64_t end = (total * static_cast<uint64_t>(rank + 1)) / static_cast<uint64_t>(size);
+        counts[rank] = static_cast<int>(end - start);
+    }
+    return counts;
+}
+
+std::vector<int> BuildDisplacements(const std::vector<int> &counts)
+{
+    std::vector<int> displacements(counts.size(), 0);
+    for (size_t i = 1; i < counts.size(); ++i)
+        displacements[i] = displacements[i - 1] + counts[i - 1];
+    return displacements;
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -34,8 +74,11 @@ int main(int argc, char *argv[])
 
     const int resolution = argc >= 3 ? std::max(1, std::atoi(argv[2])) : 64;
     std::vector<Triangle> triangles;
+    std::vector<Triangle> local_triangles;
     Bounds bounds{};
     double load_seconds = 0.0;
+    MPI_Datatype triangle_type = CreateTriangleType();
+    MPI_Datatype bounds_type = CreateBoundsType();
 
     if (rank == 0)
     {
@@ -71,21 +114,26 @@ int main(int argc, char *argv[])
 
     uint64_t triangle_count = triangles.size();
     MPI_Bcast(&triangle_count, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-    if (rank != 0)
-        triangles.resize(triangle_count);
+    std::vector<int> counts = BuildCounts(triangle_count, size);
+    std::vector<int> displacements = BuildDisplacements(counts);
+    local_triangles.resize(counts[rank]);
 
-    MPI_Bcast(triangles.data(),
-              static_cast<int>(triangle_count * sizeof(Triangle)),
-              MPI_BYTE,
-              0,
-              MPI_COMM_WORLD);
-    MPI_Bcast(&bounds, sizeof(Bounds), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(rank == 0 ? triangles.data() : nullptr,
+                 counts.data(),
+                 displacements.data(),
+                 triangle_type,
+                 local_triangles.data(),
+                 counts[rank],
+                 triangle_type,
+                 0,
+                 MPI_COMM_WORLD);
+    MPI_Bcast(&bounds, 1, bounds_type, 0, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
     const double voxel_start = MPI_Wtime();
 
     VoxelStats local_stats{};
-    std::vector<uint64_t> local_grid = Voxelize(triangles, resolution, bounds, rank, size, local_stats);
+    std::vector<uint64_t> local_grid = Voxelize(local_triangles, resolution, bounds, local_stats);
     std::vector<uint64_t> global_grid(local_grid.size(), 0);
 
     MPI_Reduce(local_grid.data(),
@@ -119,6 +167,9 @@ int main(int argc, char *argv[])
         std::printf("triangles=%llu\n", static_cast<unsigned long long>(triangle_count));
         std::printf("processes=%d\n", size);
         std::printf("resolution=%d\n", resolution);
+        std::printf("partition=min:%d max:%d\n",
+                    *std::min_element(counts.begin(), counts.end()),
+                    *std::max_element(counts.begin(), counts.end()));
         std::printf("occupied_voxels=%llu\n", static_cast<unsigned long long>(occupied));
         std::printf("tested_voxels=%llu\n", static_cast<unsigned long long>(total_tested_voxels));
         std::printf("estimated_flops=%llu\n", static_cast<unsigned long long>(total_estimated_flops));
@@ -126,6 +177,9 @@ int main(int argc, char *argv[])
         std::printf("voxel_seconds=%.6f\n", max_voxel_seconds);
         std::printf("estimated_flops_per_second=%.2f\n", flops_per_second);
     }
+
+    MPI_Type_free(&triangle_type);
+    MPI_Type_free(&bounds_type);
 
     ierr = MPI_Finalize();
     if (ierr != MPI_SUCCESS)

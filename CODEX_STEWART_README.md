@@ -35,7 +35,15 @@ nix shell nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi -c mpirun --allow-ru
 
 ## Siguiente mejora tecnica
 
-Reemplazar el marcado por bounding box por un test de interseccion triangulo-voxel:
+La branch `codex-course-aligned-mpi-models` mejora esta beta para alinearla mas con el curso:
+
+- usa `MPI_Datatype` derivado para `Triangle` y `Bounds`;
+- reparte triangulos con `MPI_Scatterv` en vez de difundir toda la malla a todos;
+- deja modelos de prueba generados y script para Stanford bunny.
+
+Branch remota con estos cambios: `codex-course-aligned-mpi-models`.
+
+Siguiente mejora tecnica despues de eso: reemplazar el marcado por bounding box por un test de interseccion triangulo-voxel:
 
 - construir el AABB del voxel;
 - probar interseccion triangulo-AABB;

@@ -43,6 +43,33 @@ mpirun -np 2 ./build/voxelization models/triangle.obj 32
 La salida incluye triangulos, procesos, resolucion, voxels ocupados, tiempo de voxelizacion
 y FLOPs estimados.
 
+## Modelos de prueba
+
+```bash
+nix shell nixpkgs#python3 -c python3 models/generate_blocky_models.py
+bash models/download_stanford_bunny.sh
+mpirun -np 4 ./build/voxelization models/blocky_creeper_like.obj 64
+mpirun -np 4 ./build/voxelization models/blocky_skeleton_like.obj 64
+mpirun -np 4 ./build/voxelization models/stanford-bunny/bun_zipper.ply 64
+```
+
+`blocky_creeper_like.obj` y `blocky_skeleton_like.obj` son meshes simples generadas para
+pruebas tecnicas; no son assets oficiales de juegos. El Stanford bunny se descarga desde
+Stanford 3D Scanning Repository y queda ignorado por Git.
+
+## Conexion con el curso
+
+Esta branch usa dos patrones vistos en CS4052:
+
+- `MPI_Scatterv` para repartir porciones no necesariamente iguales del arreglo de triangulos.
+- `MPI_Datatype` derivado para comunicar `Triangle` y `Bounds` sin tratarlos como bytes crudos.
+
+El analisis esperado en el informe debe presentarse como:
+
+```text
+metodo -> particionamiento -> comunicacion -> Tp = Tcomp + Tcomm -> S -> E -> escalabilidad
+```
+
 ## Betas para el informe parcial
 
 1. Beta 1: carga de malla con Assimp y conversion a arreglo de triangulos.

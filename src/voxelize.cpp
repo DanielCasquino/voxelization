@@ -59,31 +59,26 @@ Bounds ComputeBounds(const std::vector<Triangle> &triangles)
 std::vector<uint64_t> Voxelize(const std::vector<Triangle> &triangles,
                                int resolution,
                                const Bounds &bounds,
-                               int rank,
-                               int world_size,
                                VoxelStats &stats)
 {
     const uint64_t voxel_count = static_cast<uint64_t>(resolution) * resolution * resolution;
     std::vector<uint64_t> local_grid((voxel_count + 63) / 64, 0);
 
-    const int start = static_cast<int>((static_cast<int64_t>(triangles.size()) * rank) / world_size);
-    const int end = static_cast<int>((static_cast<int64_t>(triangles.size()) * (rank + 1)) / world_size);
-
     float cell_size[3];
     for (int axis = 0; axis < 3; ++axis)
         cell_size[axis] = (bounds.max[axis] - bounds.min[axis]) / static_cast<float>(resolution);
 
-    for (int i = start; i < end; ++i)
+    for (const Triangle &triangle : triangles)
     {
-        float tri_min[3] = {triangles[i].v[0][0], triangles[i].v[0][1], triangles[i].v[0][2]};
-        float tri_max[3] = {triangles[i].v[0][0], triangles[i].v[0][1], triangles[i].v[0][2]};
+        float tri_min[3] = {triangle.v[0][0], triangle.v[0][1], triangle.v[0][2]};
+        float tri_max[3] = {triangle.v[0][0], triangle.v[0][1], triangle.v[0][2]};
 
         for (int vertex = 1; vertex < 3; ++vertex)
         {
             for (int axis = 0; axis < 3; ++axis)
             {
-                tri_min[axis] = std::min(tri_min[axis], triangles[i].v[vertex][axis]);
-                tri_max[axis] = std::max(tri_max[axis], triangles[i].v[vertex][axis]);
+                tri_min[axis] = std::min(tri_min[axis], triangle.v[vertex][axis]);
+                tri_max[axis] = std::max(tri_max[axis], triangle.v[vertex][axis]);
             }
         }
 
