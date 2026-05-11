@@ -13,67 +13,68 @@
 
 namespace
 {
-MPI_Datatype CreateTriangleType()
-{
-    MPI_Datatype triangle_type;
-    MPI_Type_contiguous(9, MPI_FLOAT, &triangle_type);
-    MPI_Type_commit(&triangle_type);
-    return triangle_type;
-}
-
-MPI_Datatype CreateBoundsType()
-{
-    MPI_Datatype bounds_type;
-    MPI_Type_contiguous(6, MPI_FLOAT, &bounds_type);
-    MPI_Type_commit(&bounds_type);
-    return bounds_type;
-}
-
-std::vector<int> BuildCounts(uint64_t total, int size)
-{
-    std::vector<int> counts(size, 0);
-    for (int rank = 0; rank < size; ++rank)
+    MPI_Datatype CreateTriangleType()
     {
-        const uint64_t start = (total * static_cast<uint64_t>(rank)) / static_cast<uint64_t>(size);
-        const uint64_t end = (total * static_cast<uint64_t>(rank + 1)) / static_cast<uint64_t>(size);
-        counts[rank] = static_cast<int>(end - start);
+        MPI_Datatype triangle_type;
+        MPI_Type_contiguous(9, MPI_FLOAT, &triangle_type);
+        MPI_Type_commit(&triangle_type);
+        return triangle_type;
     }
-    return counts;
-}
 
-std::vector<int> BuildDisplacements(const std::vector<int> &counts)
-{
-    std::vector<int> displacements(counts.size(), 0);
-    for (size_t i = 1; i < counts.size(); ++i)
-        displacements[i] = displacements[i - 1] + counts[i - 1];
-    return displacements;
-}
-
-bool TestBit(const std::vector<uint64_t> &bits, uint64_t index)
-{
-    return (bits[index / 64] & (uint64_t{1} << (index % 64))) != 0;
-}
-
-void WriteZProjectionPGM(const std::string &path, const std::vector<uint64_t> &grid, int resolution)
-{
-    std::ofstream out(path);
-    out << "P2\n" << resolution << " " << resolution << "\n255\n";
-    for (int y = resolution - 1; y >= 0; --y)
+    MPI_Datatype CreateBoundsType()
     {
-        for (int x = 0; x < resolution; ++x)
+        MPI_Datatype bounds_type;
+        MPI_Type_contiguous(6, MPI_FLOAT, &bounds_type);
+        MPI_Type_commit(&bounds_type);
+        return bounds_type;
+    }
+
+    std::vector<int> BuildCounts(uint64_t total, int size)
+    {
+        std::vector<int> counts(size, 0);
+        for (int rank = 0; rank < size; ++rank)
         {
-            bool occupied = false;
-            for (int z = 0; z < resolution && !occupied; ++z)
+            const uint64_t start = (total * static_cast<uint64_t>(rank)) / static_cast<uint64_t>(size);
+            const uint64_t end = (total * static_cast<uint64_t>(rank + 1)) / static_cast<uint64_t>(size);
+            counts[rank] = static_cast<int>(end - start);
+        }
+        return counts;
+    }
+
+    std::vector<int> BuildDisplacements(const std::vector<int> &counts)
+    {
+        std::vector<int> displacements(counts.size(), 0);
+        for (size_t i = 1; i < counts.size(); ++i)
+            displacements[i] = displacements[i - 1] + counts[i - 1];
+        return displacements;
+    }
+
+    bool TestBit(const std::vector<uint64_t> &bits, uint64_t index)
+    {
+        return (bits[index / 64] & (uint64_t{1} << (index % 64))) != 0;
+    }
+
+    void WriteZProjectionPGM(const std::string &path, const std::vector<uint64_t> &grid, int resolution)
+    {
+        std::ofstream out(path);
+        out << "P2\n"
+            << resolution << " " << resolution << "\n255\n";
+        for (int y = resolution - 1; y >= 0; --y)
+        {
+            for (int x = 0; x < resolution; ++x)
             {
-                const uint64_t index = static_cast<uint64_t>(z) * resolution * resolution +
-                                       static_cast<uint64_t>(y) * resolution +
-                                       static_cast<uint64_t>(x);
-                occupied = TestBit(grid, index);
+                bool occupied = false;
+                for (int z = 0; z < resolution && !occupied; ++z)
+                {
+                    const uint64_t index = static_cast<uint64_t>(z) * resolution * resolution +
+                                           static_cast<uint64_t>(y) * resolution +
+                                           static_cast<uint64_t>(x);
+                    occupied = TestBit(grid, index);
+                }
+                out << (occupied ? 0 : 255) << (x + 1 == resolution ? '\n' : ' ');
             }
-            out << (occupied ? 0 : 255) << (x + 1 == resolution ? '\n' : ' ');
         }
     }
-}
 }
 
 int main(int argc, char *argv[])
