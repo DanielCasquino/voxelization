@@ -37,10 +37,10 @@ namespace
         return bounds_type;
     }
 
-    /// @brief
-    /// @param total
-    /// @param size
-    /// @return
+    /// @brief Split a total number of triangles as evenly as possible across MPI ranks.
+    /// @param total Total number of triangles.
+    /// @param size Number of MPI ranks.
+    /// @return Number of triangles assigned to each rank.
     std::vector<int> BuildCounts(uint64_t total, int size)
     {
         std::vector<int> counts(size, 0);

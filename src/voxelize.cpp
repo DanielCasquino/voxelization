@@ -91,7 +91,7 @@ namespace
     }
 }
 
-/// @brief Just computes bounds lol
+/// @brief Compute the axis-aligned bounding box of all input triangles.
 /// @param triangles
 /// @return 3D bounding box for triangles
 Bounds ComputeBounds(const std::vector<Triangle> &triangles)
@@ -151,7 +151,7 @@ std::vector<uint64_t> Voxelize(const std::vector<Triangle> &triangles,
 /// @param bounds
 /// @param stats
 /// @param requested_threads
-/// @return
+/// @return Final bit-packed voxel grid.
 std::vector<uint64_t> VoxelizeOMPPrivate(const std::vector<Triangle> &triangles,
                                          int resolution,
                                          const Bounds &bounds,
@@ -201,7 +201,7 @@ std::vector<uint64_t> VoxelizeOMPPrivate(const std::vector<Triangle> &triangles,
 /// @param bounds
 /// @param stats
 /// @param requested_threads
-/// @return
+/// @return Final bit-packed voxel grid.
 std::vector<uint64_t> VoxelizeOMPAtomic(const std::vector<Triangle> &triangles,
                                         int resolution,
                                         const Bounds &bounds,
