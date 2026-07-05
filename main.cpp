@@ -17,214 +17,223 @@
 
 namespace
 {
-MPI_Datatype CreateTriangleType()
-{
-    MPI_Datatype triangle_type;
-    MPI_Type_contiguous(9, MPI_FLOAT, &triangle_type);
-    MPI_Type_commit(&triangle_type);
-    return triangle_type;
-}
-
-MPI_Datatype CreateBoundsType()
-{
-    MPI_Datatype bounds_type;
-    MPI_Type_contiguous(6, MPI_FLOAT, &bounds_type);
-    MPI_Type_commit(&bounds_type);
-    return bounds_type;
-}
-
-std::vector<int> BuildCounts(uint64_t total, int size)
-{
-    std::vector<int> counts(size, 0);
-    for (int rank = 0; rank < size; ++rank)
+    /// @brief MPI wrapper for Triangle type (3 verts, xyz each)
+    /// @return MPI_Datatype for Triangle
+    MPI_Datatype CreateTriangleType()
     {
-        const uint64_t start = (total * static_cast<uint64_t>(rank)) / static_cast<uint64_t>(size);
-        const uint64_t end = (total * static_cast<uint64_t>(rank + 1)) / static_cast<uint64_t>(size);
-        counts[rank] = static_cast<int>(end - start);
-    }
-    return counts;
-}
-
-std::vector<int> BuildDisplacements(const std::vector<int> &counts)
-{
-    std::vector<int> displacements(counts.size(), 0);
-    for (size_t i = 1; i < counts.size(); ++i)
-        displacements[i] = displacements[i - 1] + counts[i - 1];
-    return displacements;
-}
-
-bool TestBit(const std::vector<uint64_t> &bits, uint64_t index)
-{
-    return (bits[index / 64] & (uint64_t{1} << (index % 64))) != 0;
-}
-
-struct Options
-{
-    std::string mesh_path;
-    int resolution = 64;
-    std::string projection_path;
-    std::string mode = "mpi";
-    int threads = 0;
-};
-
-bool ParseOptions(int argc, char *argv[], Options &options)
-{
-    std::vector<std::string> positional;
-    for (int i = 1; i < argc; ++i)
-    {
-        const std::string arg = argv[i];
-        if (arg.rfind("--mode=", 0) == 0)
-            options.mode = arg.substr(7);
-        else if (arg == "--mode" && i + 1 < argc)
-            options.mode = argv[++i];
-        else if (arg.rfind("--threads=", 0) == 0)
-            options.threads = std::atoi(arg.substr(10).c_str());
-        else if (arg == "--threads" && i + 1 < argc)
-            options.threads = std::atoi(argv[++i]);
-        else
-            positional.push_back(arg);
+        MPI_Datatype triangle_type;
+        MPI_Type_contiguous(9, MPI_FLOAT, &triangle_type);
+        MPI_Type_commit(&triangle_type);
+        return triangle_type;
     }
 
-    if (positional.empty())
-        return false;
-
-    options.mesh_path = positional[0];
-    if (positional.size() >= 2)
-        options.resolution = std::max(1, std::atoi(positional[1].c_str()));
-    if (positional.size() >= 3)
-        options.projection_path = positional[2];
-
-    return options.mode == "mpi" || options.mode == "omp_private" || options.mode == "omp_atomic";
-}
-
-int ParseObjIndex(const std::string &token)
-{
-    const size_t slash = token.find('/');
-    const std::string head = slash == std::string::npos ? token : token.substr(0, slash);
-    return std::atoi(head.c_str()) - 1;
-}
-
-bool LoadObjMesh(const std::string &path, std::vector<Triangle> &triangles, std::string &error)
-{
-    std::ifstream input(path);
-    if (!input)
+    /// @brief MPI wrapper for Bounds type (6 floats: min_x, min_y, min_z, max_x, max_y, max_z)
+    /// @return MPI_Datatype for Bounds
+    MPI_Datatype CreateBoundsType()
     {
-        error = "could not open OBJ file";
-        return false;
+        MPI_Datatype bounds_type;
+        MPI_Type_contiguous(6, MPI_FLOAT, &bounds_type);
+        MPI_Type_commit(&bounds_type);
+        return bounds_type;
     }
 
-    std::vector<std::array<float, 3>> vertices;
-    std::string line;
-    while (std::getline(input, line))
+    /// @brief
+    /// @param total
+    /// @param size
+    /// @return
+    std::vector<int> BuildCounts(uint64_t total, int size)
     {
-        std::istringstream stream(line);
-        std::string tag;
-        stream >> tag;
-        if (tag == "v")
+        std::vector<int> counts(size, 0);
+        for (int rank = 0; rank < size; ++rank)
         {
-            std::array<float, 3> vertex{};
-            stream >> vertex[0] >> vertex[1] >> vertex[2];
-            vertices.push_back(vertex);
+            const uint64_t start = (total * static_cast<uint64_t>(rank)) / static_cast<uint64_t>(size);
+            const uint64_t end = (total * static_cast<uint64_t>(rank + 1)) / static_cast<uint64_t>(size);
+            counts[rank] = static_cast<int>(end - start);
         }
-        else if (tag == "f")
+        return counts;
+    }
+
+    std::vector<int> BuildDisplacements(const std::vector<int> &counts)
+    {
+        std::vector<int> displacements(counts.size(), 0);
+        for (size_t i = 1; i < counts.size(); ++i)
+            displacements[i] = displacements[i - 1] + counts[i - 1];
+        return displacements;
+    }
+
+    bool TestBit(const std::vector<uint64_t> &bits, uint64_t index)
+    {
+        return (bits[index / 64] & (uint64_t{1} << (index % 64))) != 0;
+    }
+
+    struct Options
+    {
+        std::string mesh_path;
+        int resolution = 64;
+        std::string projection_path;
+        std::string mode = "mpi";
+        int threads = 0;
+    };
+
+    bool ParseOptions(int argc, char *argv[], Options &options)
+    {
+        std::vector<std::string> positional;
+        for (int i = 1; i < argc; ++i)
         {
-            std::vector<int> indices;
-            std::string token;
-            while (stream >> token)
-                indices.push_back(ParseObjIndex(token));
+            const std::string arg = argv[i];
+            if (arg.rfind("--mode=", 0) == 0)
+                options.mode = arg.substr(7);
+            else if (arg == "--mode" && i + 1 < argc)
+                options.mode = argv[++i];
+            else if (arg.rfind("--threads=", 0) == 0)
+                options.threads = std::atoi(arg.substr(10).c_str());
+            else if (arg == "--threads" && i + 1 < argc)
+                options.threads = std::atoi(argv[++i]);
+            else
+                positional.push_back(arg);
+        }
 
-            if (indices.size() < 3)
-                continue;
+        if (positional.empty())
+            return false;
 
-            for (size_t i = 1; i + 1 < indices.size(); ++i)
+        options.mesh_path = positional[0];
+        if (positional.size() >= 2)
+            options.resolution = std::max(1, std::atoi(positional[1].c_str()));
+        if (positional.size() >= 3)
+            options.projection_path = positional[2];
+
+        return options.mode == "mpi" || options.mode == "omp_private" || options.mode == "omp_atomic";
+    }
+
+    int ParseObjIndex(const std::string &token)
+    {
+        const size_t slash = token.find('/');
+        const std::string head = slash == std::string::npos ? token : token.substr(0, slash);
+        return std::atoi(head.c_str()) - 1;
+    }
+
+    bool LoadObjMesh(const std::string &path, std::vector<Triangle> &triangles, std::string &error)
+    {
+        std::ifstream input(path);
+        if (!input)
+        {
+            error = "could not open OBJ file";
+            return false;
+        }
+
+        std::vector<std::array<float, 3>> vertices;
+        std::string line;
+        while (std::getline(input, line))
+        {
+            std::istringstream stream(line);
+            std::string tag;
+            stream >> tag;
+            if (tag == "v")
             {
-                const int face_indices[3] = {indices[0], indices[i], indices[i + 1]};
-                Triangle triangle{};
-                for (int vertex = 0; vertex < 3; ++vertex)
+                std::array<float, 3> vertex{};
+                stream >> vertex[0] >> vertex[1] >> vertex[2];
+                vertices.push_back(vertex);
+            }
+            else if (tag == "f")
+            {
+                std::vector<int> indices;
+                std::string token;
+                while (stream >> token)
+                    indices.push_back(ParseObjIndex(token));
+
+                if (indices.size() < 3)
+                    continue;
+
+                for (size_t i = 1; i + 1 < indices.size(); ++i)
                 {
-                    const int index = face_indices[vertex];
-                    if (index < 0 || static_cast<size_t>(index) >= vertices.size())
+                    const int face_indices[3] = {indices[0], indices[i], indices[i + 1]};
+                    Triangle triangle{};
+                    for (int vertex = 0; vertex < 3; ++vertex)
                     {
-                        error = "OBJ face index out of range";
-                        return false;
+                        const int index = face_indices[vertex];
+                        if (index < 0 || static_cast<size_t>(index) >= vertices.size())
+                        {
+                            error = "OBJ face index out of range";
+                            return false;
+                        }
+                        for (int axis = 0; axis < 3; ++axis)
+                            triangle.v[vertex][axis] = vertices[index][axis];
                     }
-                    for (int axis = 0; axis < 3; ++axis)
-                        triangle.v[vertex][axis] = vertices[index][axis];
+                    triangles.push_back(triangle);
                 }
-                triangles.push_back(triangle);
             }
         }
-    }
 
-    if (triangles.empty())
-    {
-        error = "OBJ file did not contain triangulable faces";
-        return false;
-    }
-    return true;
-}
-
-bool LoadMesh(const std::string &path, std::vector<Triangle> &triangles, std::string &error)
-{
-#ifdef VOXELIZATION_USE_ASSIMP
-    Assimp::Importer imp;
-    const aiScene *scene = imp.ReadFile(path, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
-    if (scene && scene->HasMeshes())
-    {
-        const aiMesh *mesh = scene->mMeshes[0];
-        triangles.resize(mesh->mNumFaces);
-
-        for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
+        if (triangles.empty())
         {
-            if (mesh->mFaces[i].mNumIndices != 3)
-                continue;
-
-            for (unsigned int j = 0; j < 3; ++j)
-            {
-                const aiVector3D vertex = mesh->mVertices[mesh->mFaces[i].mIndices[j]];
-                triangles[i].v[j][0] = vertex.x;
-                triangles[i].v[j][1] = vertex.y;
-                triangles[i].v[j][2] = vertex.z;
-            }
+            error = "OBJ file did not contain triangulable faces";
+            return false;
         }
         return true;
     }
 
-    error = imp.GetErrorString();
+    bool LoadMesh(const std::string &path, std::vector<Triangle> &triangles, std::string &error)
+    {
+#ifdef VOXELIZATION_USE_ASSIMP
+        Assimp::Importer imp;
+        const aiScene *scene = imp.ReadFile(path, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
+        if (scene && scene->HasMeshes())
+        {
+            const aiMesh *mesh = scene->mMeshes[0];
+            triangles.resize(mesh->mNumFaces);
+
+            for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
+            {
+                if (mesh->mFaces[i].mNumIndices != 3)
+                    continue;
+
+                for (unsigned int j = 0; j < 3; ++j)
+                {
+                    const aiVector3D vertex = mesh->mVertices[mesh->mFaces[i].mIndices[j]];
+                    triangles[i].v[j][0] = vertex.x;
+                    triangles[i].v[j][1] = vertex.y;
+                    triangles[i].v[j][2] = vertex.z;
+                }
+            }
+            return true;
+        }
+
+        error = imp.GetErrorString();
 #endif
 
-    const bool looks_like_obj = path.size() >= 4 && path.substr(path.size() - 4) == ".obj";
-    if (looks_like_obj)
-        return LoadObjMesh(path, triangles, error);
+        const bool looks_like_obj = path.size() >= 4 && path.substr(path.size() - 4) == ".obj";
+        if (looks_like_obj)
+            return LoadObjMesh(path, triangles, error);
 
 #ifdef VOXELIZATION_USE_ASSIMP
-    return false;
+        return false;
 #else
-    error = "Assimp is not available and the fallback loader only supports OBJ files";
-    return false;
+        error = "Assimp is not available and the fallback loader only supports OBJ files";
+        return false;
 #endif
-}
+    }
 
-void WriteZProjectionPGM(const std::string &path, const std::vector<uint64_t> &grid, int resolution)
-{
-    std::ofstream out(path);
-    out << "P2\n" << resolution << " " << resolution << "\n255\n";
-    for (int y = resolution - 1; y >= 0; --y)
+    void WriteZProjectionPGM(const std::string &path, const std::vector<uint64_t> &grid, int resolution)
     {
-        for (int x = 0; x < resolution; ++x)
+        std::ofstream out(path);
+        out << "P2\n"
+            << resolution << " " << resolution << "\n255\n";
+        for (int y = resolution - 1; y >= 0; --y)
         {
-            bool occupied = false;
-            for (int z = 0; z < resolution && !occupied; ++z)
+            for (int x = 0; x < resolution; ++x)
             {
-                const uint64_t index = static_cast<uint64_t>(z) * resolution * resolution +
-                                       static_cast<uint64_t>(y) * resolution +
-                                       static_cast<uint64_t>(x);
-                occupied = TestBit(grid, index);
+                bool occupied = false;
+                for (int z = 0; z < resolution && !occupied; ++z)
+                {
+                    const uint64_t index = static_cast<uint64_t>(z) * resolution * resolution +
+                                           static_cast<uint64_t>(y) * resolution +
+                                           static_cast<uint64_t>(x);
+                    occupied = TestBit(grid, index);
+                }
+                out << (occupied ? 0 : 255) << (x + 1 == resolution ? '\n' : ' ');
             }
-            out << (occupied ? 0 : 255) << (x + 1 == resolution ? '\n' : ' ');
         }
     }
-}
 }
 
 int main(int argc, char *argv[])

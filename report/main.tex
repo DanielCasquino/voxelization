@@ -40,18 +40,18 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a parallel implementation of conservative voxelization for
-triangle meshes. The main implementation uses MPI to distribute triangles across
-processes, build private bit-packed voxel grids, and merge the final result with
-a bitwise OR reduction. To justify the selected paradigm, two shared-memory
-OpenMP variants are also implemented: one with a private grid per thread and one
-with a shared grid updated through atomic OR. The evaluation compares execution
-time, speedup, efficiency, and experimental overhead for small and moderate grid
-resolutions.
+    This paper presents a parallel implementation of conservative voxelization for
+    triangle meshes. The main implementation uses MPI to distribute triangles across
+    processes, build private bit-packed voxel grids, and merge the final result with
+    a bitwise OR reduction. To justify the selected paradigm, two shared-memory
+    OpenMP variants are also implemented: one with a private grid per thread and one
+    with a shared grid updated through atomic OR operations. The evaluation compares execution
+    time, speedup, efficiency, and experimental overhead for small and moderate grid
+    resolutions.
 \end{abstract}
 
 \begin{IEEEkeywords}
-voxelization, MPI, OpenMP, parallel computing, overhead, PRAM
+    voxelization, MPI, OpenMP, parallel computing, overhead, PRAM
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -74,7 +74,7 @@ or spatial indexing to be correct and measurable.
 
 \subsection{Input and Representation}
 
-The input is a triangle mesh $T=\{t_0,t_1,\ldots,t_{m-1}\}$ and a grid
+The input is a triangle mesh $T=\{t_0,T_s,\ldots,t_{m-1}\}$ and a grid
 resolution $r$. The voxel grid has $V=r^3$ cells. To reduce memory, the grid is
 stored as a bitset implemented with 64-bit words, so the number of stored words
 is $w=\lceil V/64\rceil$.
@@ -87,76 +87,76 @@ deterministic, and exposes parallel work clearly.
 \subsection{PRAM Model}
 
 The high-level algorithm can be modeled as CRCW PRAM because different workers
-may write the same voxel. The write conflict is benign when the operation is
-logical OR: marking the same voxel multiple times still leaves the final bit set
-to one.
+may write to the same voxel. The write conflict is benign when the operation is
+a logical OR, as marking the same voxel multiple times still leaves the final
+bit set to one.
 
 \begin{algorithm}
     \caption{Voxelization (PRAM)}
     \begin{algorithmic}[1]
-        \State $B \gets \text{empty bitset}$
-        \State $T \gets \text{triangulate}(\text{model.load}(path)).faces$
-        \ForAll{$t$ \textbf{in} $T$ \textbf{pardo}}
-            \ForAll{voxel $v$ \textbf{inside AABB of} $t$}
-                \State $i \gets \text{index}(v)$
-                \State $B[i] \gets B[i]\ \textbf{or}\ 1$
-            \EndFor
-        \EndFor
-        \State \Return $B$
+        \State$B \gets \text{empty bitset}$
+        \State$T \gets \text{triangulate}(\text{model.load}(path)).faces$
+        \For{$t$ \textbf{in} $T = \{t_0, T_s, \ldots, t_{m-1}\}$ \textbf{par}}
+        \ForAll{candidate voxels $c_i$ \textbf{inside AABB of} $t$}
+        \State$i \gets \text{index}(v)$
+        \State$B[i] \gets B[i] \lor 1$
+        \EndFor{}
+        \EndFor{}
+        \State\Return$B$
     \end{algorithmic}
 \end{algorithm}
 
-Let $b_i$ be the number of candidate voxels visited for triangle $t_i$ and
-$B_c=\sum_{i=0}^{m-1} b_i$. The sequential work of the voxelization stage is:
+$c_i$ is defined as the number of candidate voxels visited for triangle $t_i$. Then,
+$C=\sum_{i=0}^{m-1} c_i$. The sequential work of the voxelization stage is:
 
 \[
-T_1 = \Theta(m + B_c).
+    T_s = \Theta(m + C)
 \]
 
 With unbounded PRAM processors over triangles, the span is dominated by the
-largest triangle AABB:
+largest triangle AABB:\@
 
 \[
-T_{\infty} = O(\max_i b_i).
+    T_{\infty} = O(\max_i c_i)
 \]
 
-Using Brent's theorem, an ideal parallel bound is:
+Using Brent's theorem, an ideal parallel bound is then:
 
 \[
-T_p = O\left(\frac{m+B_c}{p} + \max_i b_i\right).
+    T_p = O\left(\frac{m+C}{p} + \max_i c_i\right)
 \]
 
 This bound explains the main limitation of triangle partitioning: if a few
-triangles cover very large AABBs, load balance can degrade.
+triangles cover very large AABBs, load balancing can degrade.
 
 \section{Parallel Implementations}
 
 \subsection{MPI}
 
 The MPI implementation is the main distributed-memory version. Rank zero loads
-the mesh and distributes triangles with \texttt{MPI\_Scatterv}. Each rank builds
-its own local bitset grid. The final grid is obtained with
+the mesh and distributes triangles with \texttt{MPI\_Scatterv}. Then, each rank
+builds its own local bitset grid. The final grid is obtained with
 \texttt{MPI\_Reduce} and \texttt{MPI\_BOR}.
 
 \[
-T_p^{MPI} \approx \frac{B_c}{p} + T_{scatter}(m,p) + T_{reduce}(w,p).
+    T_p^{\text{MPI}} \approx \frac{C}{p} + T_{\text{scatter}}(m,p) + T_{\text{reduce}}(w,p)
 \]
 
-This design avoids data races during voxel marking because each process writes
-only to private memory. Its main overhead comes from launching processes,
-distributing triangles, synchronizing, and reducing the bit-packed grid.
+This design avoids data races during voxel marking, as each process writes to
+private memory only. Its main overhead comes from process initialization,
+triangle distribution, synchronization, and reduction of the bit-packed grid.
 
 \subsection{OpenMP with Private Grids}
 
 The \texttt{omp\_private} variant uses one process and multiple threads. Each
-thread writes to a private grid, and all grids are merged with OR at the end:
+thread writes to a private grid, and all grids are merged with an OR reduction:
 
 \[
-T_p^{OMP-private} \approx \frac{B_c}{p} + T_{reduce\_mem}(w,p).
+    T_p^{\text{OMP-private}} \approx \frac{C}{p} + T_{\text{reduce\_mem}}(w,p)
 \]
 
-This version avoids atomics, but it increases memory use by a factor close to
-the number of threads.
+This version avoids atomic operation overhead, but it increases memory usage by
+a factor that is close to the number of threads.
 
 \subsection{OpenMP with Atomic Updates}
 
@@ -164,7 +164,7 @@ The \texttt{omp\_atomic} variant uses a shared bitset grid. Each update uses an
 atomic OR on the 64-bit word that contains the target voxel bit:
 
 \[
-T_p^{OMP-atomic} \approx \frac{B_c}{p} + A C_{atomic} + C_{contention}.
+    T_p^{\text{OMP-atomic}} \approx \frac{C}{p} + A C_{\text{atomic}} + C_{\text{contention}}
 \]
 
 This version saves memory, but several threads can contend for the same 64-bit
@@ -173,13 +173,13 @@ word even when they update different voxel bits.
 \section{Experimental Methodology}
 
 The measured region is \texttt{voxel\_seconds}. For each mode, the baseline
-$T_1$ is the same mode with $p=1$. The metrics are:
+$T_s$ is the same mode with $p=1$. The metrics are:
 
 \begin{align}
-S(p)&=\frac{T_1}{T_p}, &
-E(p)&=\frac{S(p)}{p}, \\
-O(p)&=pT_p-T_1, &
-R_O(p)&=\frac{O(p)}{T_1}.
+    S(p)   & =\frac{T_s}{T_p},    &
+    E(p)   & =\frac{S(p)}{p},       \\
+    T_o(p) & =pT_p-T_s,           &
+    R_O(p) & =\frac{T_o(p)}{T_s}.
 \end{align}
 
 Local experiments used the OBJ model \texttt{blocky\_creeper\_like}, grid
@@ -190,40 +190,40 @@ parallel work is large enough to expose speedup in some modes.
 \section{Results}
 
 \begin{table}[t]
-\centering
-\caption{Local results for resolution 128, median of three runs.}
-\begin{tabular}{lrrrrr}
-\toprule
-Mode & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ & $O/T_1$ \\
-\midrule
-MPI & 1 & 0.002703 & 1.000 & 1.000 & 0.000 \\
-MPI & 2 & 0.001755 & 1.540 & 0.770 & 0.299 \\
-MPI & 4 & 0.002288 & 1.181 & 0.295 & 2.386 \\
-OMP atomic & 1 & 0.003745 & 1.000 & 1.000 & 0.000 \\
-OMP atomic & 2 & 0.002837 & 1.320 & 0.660 & 0.515 \\
-OMP atomic & 4 & 0.002061 & 1.817 & 0.454 & 1.201 \\
-OMP private & 1 & 0.003016 & 1.000 & 1.000 & 0.000 \\
-OMP private & 2 & 0.002748 & 1.098 & 0.549 & 0.822 \\
-OMP private & 4 & 0.002948 & 1.023 & 0.256 & 2.910 \\
-\bottomrule
-\end{tabular}
+    \centering
+    \caption{Local results for resolution 128, median of three runs.}
+    \begin{tabular}{lrrrrr}
+        \toprule
+        Mode        & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ & $O/T_s$ \\
+        \midrule
+        MPI         & 1   & 0.002703  & 1.000  & 1.000  & 0.000   \\
+        MPI         & 2   & 0.001755  & 1.540  & 0.770  & 0.299   \\
+        MPI         & 4   & 0.002288  & 1.181  & 0.295  & 2.386   \\
+        OMP atomic  & 1   & 0.003745  & 1.000  & 1.000  & 0.000   \\
+        OMP atomic  & 2   & 0.002837  & 1.320  & 0.660  & 0.515   \\
+        OMP atomic  & 4   & 0.002061  & 1.817  & 0.454  & 1.201   \\
+        OMP private & 1   & 0.003016  & 1.000  & 1.000  & 0.000   \\
+        OMP private & 2   & 0.002748  & 1.098  & 0.549  & 0.822   \\
+        OMP private & 4   & 0.002948  & 1.023  & 0.256  & 2.910   \\
+        \bottomrule
+    \end{tabular}
 \end{table}
 
 For resolutions $32$ and $64$, the measured times are very small and overhead
 dominates. At resolution $128$, MPI obtains its best local point at $p=2$.
-OpenMP atomic improves up to $p=4$ in this small mesh, while OpenMP private does
-not clearly outperform the other variants because the private-grid reduction is
-significant relative to the computation.
+OpenMP atomic improves up to $p=4$ in this small mesh, while OpenMP private
+does not clearly outperform the other variants because the private-grid
+reduction is significant relative to the computation.
 
 \section{Khipu Validation}
 
-The project was also validated on UTEC's Khipu cluster using Slurm, OpenMPI, and
-CMake. The code was adjusted so it can build without Assimp by using a small OBJ
-fallback loader for benchmark models. A conservative debug job used up to four
-CPUs and small resolutions. This run is treated as portability validation, not
-as a definitive benchmark, because the measured times are in the microsecond to
-millisecond range and are therefore sensitive to scheduler and environment
-noise.
+The project was also validated on UTEC's Khipu cluster using Slurm, OpenMPI,
+and CMake. The code was adjusted so it can build without Assimp by using a
+small OBJ fallback loader for benchmark models. A conservative debug job used
+up to four CPUs and small resolutions. This run is treated as portability
+validation, not as a definitive benchmark, because the measured times are in
+the microsecond to millisecond range and are therefore sensitive to scheduler
+and environment noise.
 
 One operational issue was observed: the available OpenMPI environment did not
 work correctly with direct \texttt{srun} execution for this program. The stable
@@ -256,12 +256,12 @@ sparse grids.
 \section{Conclusion}
 
 The final implementation keeps MPI as the main solution and adds OpenMP
-variants for comparison. The experiments confirm that overhead is central to the
-analysis: for small grids, parallelism can lose to overhead, while for larger
-fixed grids some configurations obtain speedup. Future work should replace the
-AABB marking approximation with a triangle-box test, implement tile-based
-partitioning with spatial filtering, and evaluate CUDA only when GPU execution
-can be validated against the CPU outputs.
+variants for comparison. The experiments confirm that overhead is central to
+the analysis: for small grids, parallelism can lose to overhead, while for
+larger fixed grids some configurations obtain speedup. Future work should
+replace the AABB marking approximation with a triangle-box test, implement
+tile-based partitioning with spatial filtering, and evaluate CUDA only when GPU
+execution can be validated against the CPU outputs.
 
 \section*{Use of AI}
 
@@ -269,8 +269,8 @@ OpenAI ChatGPT/Codex was used as an assistant to organize the report, review
 the complexity derivation, compare MPI/OpenMP/CUDA tradeoffs, and prepare
 documentation. The code, formulas, and conclusions were checked against the
 repository implementation, official MPI/OpenMP/Khipu documentation, and the
-technical references below. AI was not used as a primary source for experimental
-results.
+technical references below. AI was not used as a primary source for
+experimental results.
 
 \begin{thebibliography}{00}
     \bibitem{b1} M. Schwarz and H.-P. Seidel, ``Fast parallel surface and solid voxelization on GPUs,'' \textit{ACM Transactions on Graphics}, vol. 29, no. 6, Article 179, 2010.
