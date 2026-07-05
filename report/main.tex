@@ -74,7 +74,7 @@ or spatial indexing to be correct and measurable.
 
 \subsection{Input and Representation}
 
-The input is a triangle mesh $T=\{t_0,T_s,\ldots,t_{m-1}\}$ and a grid
+The input is a triangle mesh $T=\{t_0,t_1,\ldots,t_{m-1}\}$ and a grid
 resolution $r$. The voxel grid has $V=r^3$ cells. To reduce memory, the grid is
 stored as a bitset implemented with 64-bit words, so the number of stored words
 is $w=\lceil V/64\rceil$.
@@ -96,8 +96,8 @@ bit set to one.
     \begin{algorithmic}[1]
         \State$B \gets \text{empty bitset}$
         \State$T \gets \text{triangulate}(\text{model.load}(path)).faces$
-        \For{$t$ \textbf{in} $T = \{t_0, T_s, \ldots, t_{m-1}\}$ \textbf{par}}
-        \ForAll{candidate voxels $c_i$ \textbf{inside AABB of} $t$}
+        \ForAll{$t$ \textbf{in} $T$ \textbf{pardo}}
+        \ForAll{candidate voxel $v$ \textbf{inside AABB of} $t$}
         \State$i \gets \text{index}(v)$
         \State$B[i] \gets B[i] \lor 1$
         \EndFor{}
@@ -249,9 +249,36 @@ The main weakness of triangle-based partitioning is load balance. If a mesh has
 only a few large triangles, some workers may receive much more work than
 others. A tile-based algorithm could assign disjoint voxel regions to workers
 and eliminate the final OR reduction, but a naive tile implementation would
-compare too many triangles against too many voxels. Practical tile-based
-voxelizers need spatial filtering structures such as binning, BVH, octrees, or
-sparse grids.
+compare too many triangles against too many voxels. Its work is
+$\Theta(mr^3/p)$ per parallel step without spatial filtering, while the current
+triangle-based implementation visits only $C=\sum_i c_i$ candidate voxels.
+For example, a mesh with $69{,}451$ triangles at $r=512$ would imply about
+$9.3\times10^{12}$ triangle-voxel tests in the naive all-triangles-per-tile
+approach. Practical tile-based voxelizers need spatial filtering structures
+such as binning, BVH, octrees, or sparse grids.
+
+\subsection{Why CUDA Was Not the Main Delivery}
+
+CUDA is technically attractive, especially when a local GPU is available, but
+the limiting issue is not only whether a kernel can be launched. A correct GPU
+version needs a memory layout, atomic or block-local reductions for bit updates,
+host-device transfer timing, and output validation against the CPU
+implementation.
+
+The memory cost also grows quickly for dense grids. A bit-packed grid requires
+$r^3/8$ bytes, while a byte-per-voxel grid requires $r^3$ bytes. At $r=4096$,
+the bit-packed grid already needs 8 GiB, and a byte grid needs 64 GiB. If each
+GPU block or worker stores four private bit-packed grids before reducing, the
+same $r=4096$ case needs 32 GiB, above a 12 GiB local GPU. With 12 GiB of VRAM,
+the theoretical maximum dense bit-packed grid is about $r=4688$ for a single
+grid, about $r=2953$ with four private grids, and about $r=2344$ with eight
+private grids, before counting triangles, auxiliary buffers, CUDA runtime
+overhead, and temporary reductions.
+
+Therefore, a CUDA implementation is reasonable future work only if paired with
+a carefully chosen memory strategy and a validation plan. For this delivery,
+MPI and OpenMP provide a simpler and more defensible comparison of distributed
+and shared memory overheads.
 
 \section{Conclusion}
 
