@@ -18,6 +18,8 @@ DEFAULT_RESOLUTIONS = [32, 64, 96, 128]
 DEFAULT_REPEATS = 3
 METRIC_KEYS = [
     "mesh",
+    "mode",
+    "threads",
     "triangles",
     "processes",
     "resolution",
@@ -46,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-dir", default=None, type=Path)
     parser.add_argument("--exe", default=None, type=Path)
     parser.add_argument("--processes", default="1,2,4,8", type=parse_int_list)
+    parser.add_argument("--mode", default="mpi", choices=("mpi", "omp_private", "omp_atomic"))
     parser.add_argument("--resolutions", default="32,64,96,128", type=parse_int_list)
     parser.add_argument("--repeats", default=DEFAULT_REPEATS, type=int)
     parser.add_argument("--results-dir", default=Path("results"), type=Path)
@@ -156,42 +159,48 @@ def parse_metrics(stdout: str) -> dict[str, str]:
     return metrics
 
 
-def raw_output_path(raw_dir: Path, mesh: Path, resolution: int, processes: int, repeat: int) -> Path:
+def raw_output_path(raw_dir: Path, mesh: Path, mode: str, resolution: int, processes: int, repeat: int) -> Path:
     mesh_name = mesh.stem.replace(" ", "_")
-    return raw_dir / f"{mesh_name}_r{resolution}_p{processes}_rep{repeat}.txt"
+    return raw_dir / f"{mesh_name}_{mode}_r{resolution}_p{processes}_rep{repeat}.txt"
 
 
 def compute_derived_metrics(rows: list[dict[str, str]]) -> None:
-    baseline_times: dict[int, float] = {}
-    grouped: dict[tuple[int, int], list[float]] = defaultdict(list)
+    baseline_times: dict[tuple[str, int], float] = {}
+    grouped: dict[tuple[str, int, int], list[float]] = defaultdict(list)
 
     for row in rows:
-        grouped[(int(row["resolution"]), int(row["processes"]))].append(float(row["voxel_seconds"]))
+        grouped[(row["mode"], int(row["resolution"]), int(row["processes"]))].append(float(row["voxel_seconds"]))
 
-    for (resolution, processes), times in grouped.items():
+    for (mode, resolution, processes), times in grouped.items():
         if processes == 1:
-            baseline_times[resolution] = sum(times) / len(times)
+            baseline_times[(mode, resolution)] = sum(times) / len(times)
 
     for row in rows:
         resolution = int(row["resolution"])
         processes = int(row["processes"])
         current_time = float(row["voxel_seconds"])
-        baseline = baseline_times.get(resolution)
+        baseline = baseline_times.get((row["mode"], resolution))
         if baseline is None or current_time <= 0.0:
             speedup = 0.0
         else:
             speedup = baseline / current_time
         efficiency = speedup / processes if processes > 0 else 0.0
+        overhead = (processes * current_time) - baseline if baseline is not None else 0.0
+        overhead_ratio = overhead / baseline if baseline and baseline > 0.0 else 0.0
         row["speedup"] = f"{speedup:.6f}"
         row["efficiency"] = f"{efficiency:.6f}"
+        row["overhead_seconds"] = f"{overhead:.6f}"
+        row["overhead_ratio"] = f"{overhead_ratio:.6f}"
 
 
 def write_metrics_csv(path: Path, rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "mesh",
+        "mode",
         "resolution",
         "processes",
+        "threads",
         "repeat",
         "triangles",
         "occupied_voxels",
@@ -202,6 +211,8 @@ def write_metrics_csv(path: Path, rows: list[dict[str, str]]) -> None:
         "estimated_flops_per_second",
         "speedup",
         "efficiency",
+        "overhead_seconds",
+        "overhead_ratio",
     ]
     with path.open("w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -220,6 +231,8 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
         args.processes = [1, 2]
         args.resolutions = [16]
         args.repeats = 1
+        if args.mode != "mpi":
+            args.processes = [1, 2]
 
     if not mesh.exists():
         raise RuntimeError(
@@ -229,7 +242,7 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
     build_dir = choose_build_dir(args.build_dir)
     exe = choose_executable(args.exe, build_dir)
     configure_and_build(build_dir, exe, args.no_build)
-    mpi_launcher = choose_mpi_launcher()
+    mpi_launcher = choose_mpi_launcher() if args.mode == "mpi" else None
 
     raw_dir = args.results_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -243,19 +256,31 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
             for repeat in range(1, args.repeats + 1):
                 current += 1
                 command = [
-                    mpi_launcher,
-                    "-np",
-                    str(processes),
                     str(exe),
                     str(mesh),
                     str(resolution),
+                    "--mode",
+                    args.mode,
                 ]
+                env = os.environ.copy()
+                if args.mode == "mpi":
+                    command = [mpi_launcher, "-np", str(processes)] + command
+                else:
+                    command += ["--threads", str(processes)]
+                    env["OMP_NUM_THREADS"] = str(processes)
                 print(
-                    f"[{current}/{total}] resolution={resolution} "
-                    f"processes={processes} repeat={repeat}"
+                    f"[{current}/{total}] mode={args.mode} resolution={resolution} "
+                    f"p={processes} repeat={repeat}"
                 )
-                result = run_command(command)
-                raw_path = raw_output_path(raw_dir, mesh, resolution, processes, repeat)
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+                raw_path = raw_output_path(raw_dir, mesh, args.mode, resolution, processes, repeat)
                 raw_path.write_text(
                     "$ " + " ".join(command) + "\n\n"
                     + result.stdout
@@ -269,6 +294,9 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
                     )
                 metrics = parse_metrics(result.stdout)
                 metrics["repeat"] = str(repeat)
+                if args.mode != "mpi":
+                    metrics["processes"] = str(processes)
+                    metrics["threads"] = str(processes)
                 rows.append(metrics)
 
     compute_derived_metrics(rows)

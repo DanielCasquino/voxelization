@@ -1,0 +1,131 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{siunitx}
+
+\title{Voxelizacion Paralela de Mallas Triangulares}
+\author{Jose Francisco Paca Sotero \\ Integrantes del grupo}
+\date{2026-I}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este informe presenta una implementacion paralela de voxelizacion conservadora de mallas triangulares. La version principal usa MPI con particionamiento por triangulos, grillas locales por proceso y reduccion OR final. Como comparacion de memoria compartida se implementan dos variantes OpenMP: grilla privada por thread con reduccion OR y grilla compartida con atomic OR. El analisis se enfoca en correctitud, speedup, eficiencia, overhead y escalabilidad para resoluciones moderadas.
+\end{abstract}
+
+\section{Introduccion}
+
+La voxelizacion convierte una malla de triangulos en una grilla tridimensional binaria. Un voxel queda ocupado si al menos un triangulo de la malla lo marca. El proyecto usa una version conservadora basada en el AABB de cada triangulo: primero se calcula la caja envolvente discreta del triangulo y luego se marcan los voxels candidatos dentro de esa caja.
+
+\section{Metodo}
+
+\subsection{Algoritmo base}
+
+Sea $m$ el numero de triangulos, $r$ la resolucion por eje, $V=r^3$ el numero de voxels y $B=\sum_i b_i$ el total de voxels candidatos visitados por los AABB de los triangulos. La version secuencial tiene trabajo:
+
+\[
+T_1 = \Theta(m + B).
+\]
+
+\subsection{MPI}
+
+La version MPI reparte triangulos entre procesos con \texttt{MPI\_Scatterv}. Cada proceso construye una grilla local bit-packed y al final se combinan las grillas con \texttt{MPI\_Reduce} usando \texttt{MPI\_BOR}. El modelo aproximado es:
+
+\[
+T_p^{MPI} \approx \frac{B}{p} + T_{scatter}(m,p) + T_{reduce}(r^3,p).
+\]
+
+Esta estrategia evita data races porque cada proceso escribe en su propia grilla. El costo principal de overhead aparece en la distribucion de triangulos, sincronizacion y reduccion OR de la grilla.
+
+\subsection{OpenMP con grilla privada}
+
+La version \texttt{omp\_private} reparte triangulos entre threads. Cada thread escribe una grilla privada y al final se combinan todas con OR:
+
+\[
+T_p^{OMP-private} \approx \frac{B}{p} + T_{reduce\_mem}(r^3,p).
+\]
+
+Esta version evita atomics y data races, pero multiplica el uso de memoria por el numero de threads.
+
+\subsection{OpenMP con grilla compartida atomica}
+
+La version \texttt{omp\_atomic} usa una sola grilla compartida. Cada escritura al bit-grid usa atomic OR sobre la palabra de 64 bits:
+
+\[
+T_p^{OMP-atomic} \approx \frac{B}{p} + A\cdot C_{atomic} + C_{contention}.
+\]
+
+Esta version ahorra memoria, pero puede perder rendimiento cuando muchos threads actualizan la misma palabra del grid.
+
+\section{Estado del arte y alcance}
+
+La voxelizacion de alto rendimiento suele implementarse en GPU. Schwarz y Seidel proponen voxelizacion de superficies y solidos en GPU, incluyendo variantes conservadoras, tile-based y estructuras sparse. Akenine-Moller propone un test rapido triangulo-caja que puede reemplazar nuestra aproximacion AABB para reducir falsos positivos.
+
+Este proyecto no implementa CUDA ni octrees porque el objetivo principal de la rubrica es construir y analizar una solucion paralela C++ defendible. CUDA requiere manejo de memoria GPU, transferencias host-device, kernels, atomics y validacion adicional. Tile-based puede mejorar balance y eliminar reducciones, pero requiere filtrado espacial para no comparar todos los triangulos contra todos los tiles.
+
+\section{Metodologia experimental}
+
+Para cada modo se mide el tiempo de voxelizacion \texttt{voxel\_seconds}. El baseline $T_1$ corresponde al mismo modo con $p=1$. Las metricas son:
+
+\[
+S(p)=\frac{T_1}{T_p}, \quad
+E(p)=\frac{S(p)}{p}, \quad
+O(p)=pT_p-T_1, \quad
+R_O(p)=\frac{O(p)}{T_1}.
+\]
+
+Se reportan corridas con malla fija y resolucion fija para escalabilidad fuerte, y corridas con diferentes resoluciones o tamanos de malla para analizar crecimiento del problema.
+
+\begin{table}[h]
+\centering
+\caption{Matriz de experimentos propuesta}
+\begin{tabular}{llll}
+\toprule
+Modo & $p$ & Resoluciones & Repeticiones \\
+\midrule
+MPI & 1, 2, 4, 8 & 32, 64, 128 & 3 \\
+OpenMP private & 1, 2, 4, 8 & 32, 64, 128 & 3 \\
+OpenMP atomic & 1, 2, 4, 8 & 32, 64, 128 & 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Resultados}
+
+\begin{table}[h]
+\centering
+\caption{Tabla de metricas. Completar con \texttt{results/*/metrics.csv}.}
+\begin{tabular}{lrrrrrr}
+\toprule
+Modo & $p$ & $T_p$ & $S(p)$ & $E(p)$ & $O(p)$ & $O/T_1$ \\
+\midrule
+MPI & 1 & -- & -- & -- & -- & -- \\
+MPI & 2 & -- & -- & -- & -- & -- \\
+OpenMP private & 2 & -- & -- & -- & -- & -- \\
+OpenMP atomic & 2 & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discusion}
+
+Para problemas fijos, aumentar $p$ no siempre mejora el tiempo. El computo local decrece como $B/p$, pero la reduccion de grilla y otros overheads no desaparecen. Por eso se busca un $p$ optimo: el menor $p$ que alcanza un tiempo cercano al minimo o mantiene una eficiencia aceptable.
+
+El particionamiento por triangulos es adecuado para mallas con muchos triangulos de costo parecido. Si hay pocos triangulos gigantes, el trabajo puede desbalancearse; una estrategia por tiles de voxels podria balancear mejor, pero necesita filtrado espacial para no aumentar el trabajo a $\Theta(r^3m)$.
+
+\section{Conclusiones}
+
+La version MPI se mantiene como implementacion principal porque modela memoria distribuida, evita data races mediante grillas locales y usa una reduccion OR natural para combinar resultados. Las variantes OpenMP permiten comparar contra memoria compartida: \texttt{omp\_private} reduce contencion a cambio de memoria y \texttt{omp\_atomic} ahorra memoria a cambio de sincronizacion por update. CUDA y tile-based se identifican como mejoras futuras apropiadas para cargas grandes o resoluciones altas.
+
+\section{Bibliografia}
+
+Ver \texttt{report/REFERENCES.md} para referencias completas y uso de fuentes externas/IA.
+
+\end{document}

@@ -25,3 +25,15 @@ std::vector<uint64_t> Voxelize(const std::vector<Triangle> &triangles,
                                int resolution,
                                const Bounds &bounds,
                                VoxelStats &stats);
+
+std::vector<uint64_t> VoxelizeOMPPrivate(const std::vector<Triangle> &triangles,
+                                          int resolution,
+                                          const Bounds &bounds,
+                                          VoxelStats &stats,
+                                          int requested_threads);
+
+std::vector<uint64_t> VoxelizeOMPAtomic(const std::vector<Triangle> &triangles,
+                                         int resolution,
+                                         const Bounds &bounds,
+                                         VoxelStats &stats,
+                                         int requested_threads);

@@ -6,6 +6,9 @@
 /models/stanford-bunny/*.ply
 /results/raw
 /results/.matplotlib
+/results/local-*/
+/results/khipu-cpu-small/
+/results/smoke-*/
 /report/build
 *.aux
 *.log
