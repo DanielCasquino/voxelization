@@ -14,3 +14,5 @@
 *.out
 *.synctex.gz
 *.toc
+
+/compile_commands.json
