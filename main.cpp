@@ -17,8 +17,6 @@
 
 namespace
 {
-    /// @brief MPI wrapper for Triangle type (3 verts, xyz each)
-    /// @return MPI_Datatype for Triangle
     MPI_Datatype CreateTriangleType()
     {
         MPI_Datatype triangle_type;
@@ -27,8 +25,6 @@ namespace
         return triangle_type;
     }
 
-    /// @brief MPI wrapper for Bounds type (6 floats: min_x, min_y, min_z, max_x, max_y, max_z)
-    /// @return MPI_Datatype for Bounds
     MPI_Datatype CreateBoundsType()
     {
         MPI_Datatype bounds_type;
@@ -37,10 +33,6 @@ namespace
         return bounds_type;
     }
 
-    /// @brief Split a total number of triangles as evenly as possible across MPI ranks.
-    /// @param total Total number of triangles.
-    /// @param size Number of MPI ranks.
-    /// @return Number of triangles assigned to each rank.
     std::vector<int> BuildCounts(uint64_t total, int size)
     {
         std::vector<int> counts(size, 0);
@@ -284,8 +276,9 @@ int main(int argc, char *argv[])
     std::vector<Triangle> local_triangles;
     Bounds bounds{};
     double load_seconds = 0.0;
-    MPI_Datatype triangle_type = CreateTriangleType();
-    MPI_Datatype bounds_type = CreateBoundsType();
+    const bool mpi_mode = options.mode == "mpi";
+    MPI_Datatype triangle_type = MPI_DATATYPE_NULL;
+    MPI_Datatype bounds_type = MPI_DATATYPE_NULL;
 
     if (rank == 0)
     {
@@ -302,21 +295,34 @@ int main(int argc, char *argv[])
     }
 
     uint64_t triangle_count = triangles.size();
-    MPI_Bcast(&triangle_count, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-    std::vector<int> counts = BuildCounts(triangle_count, size);
-    std::vector<int> displacements = BuildDisplacements(counts);
-    local_triangles.resize(counts[rank]);
+    std::vector<int> counts;
 
-    MPI_Scatterv(rank == 0 ? triangles.data() : nullptr,
-                 counts.data(),
-                 displacements.data(),
-                 triangle_type,
-                 local_triangles.data(),
-                 counts[rank],
-                 triangle_type,
-                 0,
-                 MPI_COMM_WORLD);
-    MPI_Bcast(&bounds, 1, bounds_type, 0, MPI_COMM_WORLD);
+    if (mpi_mode)
+    {
+        triangle_type = CreateTriangleType();
+        bounds_type = CreateBoundsType();
+
+        MPI_Bcast(&triangle_count, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        counts = BuildCounts(triangle_count, size);
+        std::vector<int> displacements = BuildDisplacements(counts);
+        local_triangles.resize(counts[rank]);
+
+        MPI_Scatterv(rank == 0 ? triangles.data() : nullptr,
+                     counts.data(),
+                     displacements.data(),
+                     triangle_type,
+                     local_triangles.data(),
+                     counts[rank],
+                     triangle_type,
+                     0,
+                     MPI_COMM_WORLD);
+        MPI_Bcast(&bounds, 1, bounds_type, 0, MPI_COMM_WORLD);
+    }
+    else
+    {
+        counts = {static_cast<int>(triangle_count)};
+        local_triangles = triangles;
+    }
 
     MPI_Barrier(MPI_COMM_WORLD);
     const double voxel_start = MPI_Wtime();
@@ -341,24 +347,29 @@ int main(int argc, char *argv[])
 #endif
     }
 
-    std::vector<uint64_t> global_grid(local_grid.size(), 0);
-
-    MPI_Reduce(local_grid.data(),
-               global_grid.data(),
-               static_cast<int>(local_grid.size()),
-               MPI_UINT64_T,
-               MPI_BOR,
-               0,
-               MPI_COMM_WORLD);
-
-    uint64_t total_tested_voxels = 0;
-    uint64_t total_estimated_flops = 0;
-    MPI_Reduce(&local_stats.tested_voxels, &total_tested_voxels, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&local_stats.estimated_flops, &total_estimated_flops, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-
     const double voxel_seconds = MPI_Wtime() - voxel_start;
-    double max_voxel_seconds = 0.0;
-    MPI_Reduce(&voxel_seconds, &max_voxel_seconds, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    std::vector<uint64_t> global_grid(local_grid.size(), 0);
+    uint64_t total_tested_voxels = local_stats.tested_voxels;
+    uint64_t total_estimated_flops = local_stats.estimated_flops;
+    double max_voxel_seconds = voxel_seconds;
+
+    if (mpi_mode)
+    {
+        MPI_Reduce(local_grid.data(),
+                   global_grid.data(),
+                   static_cast<int>(local_grid.size()),
+                   MPI_UINT64_T,
+                   MPI_BOR,
+                   0,
+                   MPI_COMM_WORLD);
+        MPI_Reduce(&local_stats.tested_voxels, &total_tested_voxels, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&local_stats.estimated_flops, &total_estimated_flops, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&voxel_seconds, &max_voxel_seconds, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    }
+    else
+    {
+        global_grid = std::move(local_grid);
+    }
 
     if (rank == 0)
     {
@@ -393,8 +404,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    MPI_Type_free(&triangle_type);
-    MPI_Type_free(&bounds_type);
+    if (mpi_mode)
+    {
+        MPI_Type_free(&triangle_type);
+        MPI_Type_free(&bounds_type);
+    }
 
     ierr = MPI_Finalize();
     if (ierr != MPI_SUCCESS)
