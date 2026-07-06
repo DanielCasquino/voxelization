@@ -1,0 +1,13 @@
+mode,resolution,processes,threads,triangles,occupied_voxels,tested_voxels,estimated_flops,load_seconds,voxel_seconds,estimated_flops_per_second,source
+cuda_atomic,128,1,0,72,120534,277944,833832,0.001219,0.311759,2674606.23,results/khipu-cuda-atomic-small/cuda_atomic_r128_44835.txt
+cuda_atomic,256,1,0,72,486156,1100752,3302256,0.000594,0.333396,9904902.97,results/khipu-cuda-atomic-small/cuda_atomic_r256_44835.txt
+cuda_atomic,512,1,0,72,1953070,4380856,13142568,0.000813,0.410128,32045050.30,results/khipu-cuda-atomic-small/cuda_atomic_r512_44835.txt
+cuda_atomic,64,1,0,72,29608,70996,212988,0.003842,0.527051,404112.54,results/khipu-cuda-atomic-small/cuda_atomic_r64_44835.txt
+mpi,128,1,0,72,120534,277944,833832,0.000525,0.000639,1304325790.50,results/khipu-cuda-atomic-small/mpi_r128_p1_44835.txt
+mpi,256,1,0,72,486156,1100752,3302256,0.001201,0.004551,725552405.34,results/khipu-cuda-atomic-small/mpi_r256_p1_44835.txt
+mpi,512,1,0,72,1953070,4380856,13142568,0.000407,0.022754,577600976.37,results/khipu-cuda-atomic-small/mpi_r512_p1_44835.txt
+mpi,64,1,0,72,29608,70996,212988,0.001145,0.000434,491151850.57,results/khipu-cuda-atomic-small/mpi_r64_p1_44835.txt
+omp_atomic,128,1,4,72,120534,277944,833832,0.000915,0.002261,368760815.74,results/khipu-cuda-atomic-small/omp_atomic_r128_t4_44835.txt
+omp_atomic,256,1,4,72,486156,1100752,3302256,0.000506,0.010533,313523066.23,results/khipu-cuda-atomic-small/omp_atomic_r256_t4_44835.txt
+omp_atomic,512,1,4,72,1953070,4380856,13142568,0.001408,0.042784,307183944.07,results/khipu-cuda-atomic-small/omp_atomic_r512_t4_44835.txt
+omp_atomic,64,1,4,72,29608,70996,212988,0.000587,0.000998,213482425.30,results/khipu-cuda-atomic-small/omp_atomic_r64_t4_44835.txt

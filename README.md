@@ -75,8 +75,14 @@ Tracked small models:
 - `models/blocky_creeper_like.obj`
 - `models/blocky_skeleton_like.obj`
 
-The Stanford Bunny benchmark used in the report is not committed as a large
-binary asset; the report includes the summarized measurements.
+The Stanford Bunny benchmark used in the report is tracked as
+`models/bunny.ply` so the scaling measurements can be reproduced.
+
+## Experiments
+
+Benchmark data and plots used by the report are tracked in `results/`. The
+helper scripts in `scripts/` regenerate local summaries and plots, while
+`jobs/` contains the conservative Slurm jobs used for Khipu validation.
 
 ## Report
 
