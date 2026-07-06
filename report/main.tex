@@ -315,6 +315,46 @@ fixed problem, the best $p$ is finite. At $r=128$, the larger triangle count
 amortizes MPI overhead up to $p=4$. At $r=512$, the dense grid reduction and
 memory traffic dominate after $p=2$ in the measured laptop run.
 
+\subsection{Scalability and Theoretical Comparison}
+
+The theoretical model predicts that the compute part should decrease
+approximately as $C/p$. The experimental speedup follows this trend only while
+local voxelization work dominates communication and reduction costs. Once $p$
+increases, the bit-packed grid reduction, synchronization, and memory traffic
+become visible. This explains why the best configuration is not always the
+largest $p$.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\linewidth]{../results/plots/speedup_vs_processes.png}
+  \includegraphics[width=0.48\linewidth]{../results/plots/theoretical_vs_experimental.png}
+  \caption{Measured speedup by process count and comparison against the ideal $T_1/p$ trend.}
+  \label{fig:speedup-theory}
+\end{figure}
+
+Figure~\ref{fig:speedup-theory} shows that the measured speedup approaches the
+ideal curve only for the first process counts. For the Stanford Bunny at
+$r=128$, speedup improves up to $p=4$ and then efficiency falls at $p=8$. This
+matches the model: the compute term $C/p$ decreases, but $T_{\text{scatter}}$
+and $T_{\text{reduce}}$ remain. The reduction term is especially important
+because the grid has $w=\lceil r^3/64\rceil$ words.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\linewidth]{../results/plots/flops_vs_processes.png}
+  \includegraphics[width=0.48\linewidth]{../results/plots/scalability_by_resolution.png}
+  \caption{Estimated FLOPs/s and scalability as grid resolution increases.}
+  \label{fig:flops-scalability}
+\end{figure}
+
+Figure~\ref{fig:flops-scalability} reports the required FLOPs/s curve and the
+effect of variable problem size. Increasing $r$ increases the number of voxels
+as $r^3$ and also increases the bitset reduction size. Therefore, larger
+resolutions expose more work but also more memory traffic. The results show the
+expected tradeoff: moderate process counts amortize the parallel overhead, while
+large process counts can lose efficiency when communication and grid reduction
+dominate.
+
 \section{Khipu Validation}
 
 The project was also validated on UTEC's Khipu cluster using Slurm, OpenMPI,
