@@ -3,10 +3,31 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#if defined(_OPENMP) && __has_include(<omp.h>)
+#define VOXELIZATION_HAS_OPENMP_HEADER 1
 #include <omp.h>
+#endif
 
 namespace
 {
+    int OpenMPMaxThreads()
+    {
+#ifdef VOXELIZATION_HAS_OPENMP_HEADER
+        return omp_get_max_threads();
+#else
+        return 1;
+#endif
+    }
+
+    int OpenMPThreadNum()
+    {
+#ifdef VOXELIZATION_HAS_OPENMP_HEADER
+        return omp_get_thread_num();
+#else
+        return 0;
+#endif
+    }
+
     int ClampIndex(float value, float min_value, float cell_size, int resolution)
     {
         int index = static_cast<int>(std::floor((value - min_value) / cell_size));
@@ -160,7 +181,7 @@ std::vector<uint64_t> VoxelizeOMPPrivate(const std::vector<Triangle> &triangles,
 {
     const uint64_t voxel_count = static_cast<uint64_t>(resolution) * resolution * resolution;
     const size_t word_count = static_cast<size_t>((voxel_count + 63) / 64);
-    const int thread_count = requested_threads > 0 ? requested_threads : omp_get_max_threads();
+    const int thread_count = requested_threads > 0 ? requested_threads : OpenMPMaxThreads();
     std::vector<std::vector<uint64_t>> private_grids(thread_count, std::vector<uint64_t>(word_count, 0));
 
     float cell_size[3];
@@ -171,7 +192,7 @@ std::vector<uint64_t> VoxelizeOMPPrivate(const std::vector<Triangle> &triangles,
 
 #pragma omp parallel num_threads(thread_count) reduction(+ : tested_voxels, estimated_flops)
     {
-        const int tid = omp_get_thread_num();
+        const int tid = OpenMPThreadNum();
         std::vector<uint64_t> &grid = private_grids[tid];
 
 #pragma omp for schedule(static)
@@ -210,7 +231,7 @@ std::vector<uint64_t> VoxelizeOMPAtomic(const std::vector<Triangle> &triangles,
 {
     const uint64_t voxel_count = static_cast<uint64_t>(resolution) * resolution * resolution;
     std::vector<uint64_t> global_grid((voxel_count + 63) / 64, 0);
-    const int thread_count = requested_threads > 0 ? requested_threads : omp_get_max_threads();
+    const int thread_count = requested_threads > 0 ? requested_threads : OpenMPMaxThreads();
 
     float cell_size[3];
     ComputeCellSize(bounds, resolution, cell_size);
