@@ -153,5 +153,5 @@ Crear una Run Configuration tipo Python o Shell Script para cada paso:
 - La metrica principal para tiempos es `voxel_seconds`, porque mide la region paralelizada.
 - El speedup se calcula como `T1 / Tp` por cada resolucion.
 - La eficiencia se calcula como `speedup / p`.
-- La curva teorica usada en las graficas es el speedup ideal `T1 / p`.
+- La curva teorica usada en las graficas es el speedup ideal `Ts / p`.
 - El tamano del problema se controla con la resolucion de la grilla.

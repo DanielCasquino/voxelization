@@ -103,7 +103,7 @@ def plot_theoretical_vs_experimental(plt, rows: list[dict[str, float | str]], ou
         y = list(values.values())
         plt.plot(x, y, marker="o", label=f"experimental r={resolution}")
     all_processes = sorted({int(row["processes"]) for row in rows})
-    plt.plot(all_processes, all_processes, linestyle="--", color="black", label="ideal T1 / p")
+    plt.plot(all_processes, all_processes, linestyle="--", color="black", label="ideal Ts / p")
     plt.xlabel("Processes")
     plt.ylabel("Speedup")
     plt.title("Theoretical vs Experimental Speedup")
