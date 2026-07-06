@@ -1,110 +1,92 @@
-# Parallel Voxelization - CPD 2026-I
+# Voxelization - CPD 2026-I
 
-Final project for Computacion Paralela y Distribuida. The program voxelizes a
-triangle mesh into a dense bit-packed voxel grid.
+Avance minimo para el proyecto de Computacion Paralela y Distribuida.
 
-## Algorithm
+## Idea
 
-For each triangle, the implementation computes its axis-aligned bounding box
-(AABB) in grid coordinates and marks all candidate voxels inside that box. The
-grid is stored as 64-bit words, so each word stores 64 voxels.
+Voxelizar es convertir una malla 3D de triangulos en una grilla 3D discreta. Cada celda de
+esa grilla es un voxel. El programa marca que voxels estan ocupados por la malla.
 
-This is a conservative AABB approximation. It is useful for analyzing
-parallelism, communication and overhead, but it is not an exact triangle-box
-intersection test.
+Esta version usa una aproximacion conservadora: para cada triangulo calcula su caja
+envolvente y marca los voxels dentro de esa caja. No es todavia una interseccion exacta
+triangulo-voxel, pero deja armado el flujo paralelo y las metricas para el informe parcial.
 
-## Parallel Modes
+## Paralelizacion
 
-- `mpi`: main distributed-memory implementation. Rank 0 loads the mesh, splits
-  triangles with `MPI_Scatterv`, each rank writes a private grid, and rank 0
-  merges grids with `MPI_Reduce + MPI_BOR`.
-- `omp_private`: shared-memory comparison. Each OpenMP thread writes a private
-  grid and the thread grids are merged with bitwise OR.
-- `omp_atomic`: shared-memory comparison. Threads write a shared grid using
-  atomic OR on 64-bit words.
-- `cuda_atomic`: optional CUDA prototype when CMake finds a CUDA compiler. It
-  launches one GPU thread per triangle and uses global `atomicOr`; this is a
-  minimal comparison, not an optimized GPU voxelizer.
+- Rank 0 carga la malla con Assimp y aplana las caras en un arreglo de `Triangle`.
+- Rank 0 reparte rangos contiguos de triangulos con `MPI_Scatterv`.
+- Rank 0 difunde el bounding box global con `MPI_Bcast`.
+- Cada rank procesa solo sus triangulos locales.
+- Cada rank produce una grilla local de bits.
+- Rank 0 combina las grillas con `MPI_Reduce` y `MPI_BOR`.
 
 ## Build
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build
 cmake --build build
 ```
 
-On NixOS:
+En NixOS, si faltan dependencias:
 
 ```bash
-nix shell nixpkgs#cmake nixpkgs#gcc nixpkgs#gnumake nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi --command cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-nix shell nixpkgs#cmake nixpkgs#gcc nixpkgs#gnumake nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi --command cmake --build build
+nix shell nixpkgs#cmake nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi -c cmake -S . -B build
+nix shell nixpkgs#cmake nixpkgs#assimp.dev nixpkgs#assimp nixpkgs#openmpi -c cmake --build build
 ```
 
 ## Run
 
-MPI:
-
 ```bash
-mpirun -np 4 ./build/voxelization models/blocky_creeper_like.obj 128 --mode mpi
+mpirun -np 1 ./build/voxelization models/triangle.obj 32
+mpirun -np 2 ./build/voxelization models/triangle.obj 32
+mkdir -p outputs
+mpirun -np 4 ./build/voxelization models/blocky_creeper_like.obj 96 outputs/creeper_96.pgm
 ```
 
-OpenMP:
+La salida incluye triangulos, procesos, resolucion, voxels ocupados, tiempo de voxelizacion
+y FLOPs estimados. Si se pasa un tercer argumento, se genera una proyeccion 2D `.pgm`
+de la grilla voxelizada vista desde el eje `z`.
+
+## Modelos de prueba
 
 ```bash
-./build/voxelization models/blocky_creeper_like.obj 128 --mode omp_private --threads 4
-./build/voxelization models/blocky_creeper_like.obj 128 --mode omp_atomic --threads 4
+nix shell nixpkgs#python3 -c python3 models/generate_blocky_models.py
+bash models/download_stanford_bunny.sh
+mpirun -np 4 ./build/voxelization models/blocky_creeper_like.obj 64
+mpirun -np 4 ./build/voxelization models/blocky_skeleton_like.obj 64
+mpirun -np 4 ./build/voxelization models/stanford-bunny/bun_zipper.ply 64
 ```
 
-Projection image:
+`blocky_creeper_like.obj` y `blocky_skeleton_like.obj` son meshes simples generadas para
+pruebas tecnicas; no son assets oficiales de juegos. El Stanford bunny se descarga desde
+Stanford 3D Scanning Repository y queda ignorado por Git.
 
-```bash
-./build/voxelization models/blocky_creeper_like.obj 128 outputs/creeper_128.pgm --mode omp_atomic --threads 4
-```
+## Conexion con el curso
 
-The output prints the mesh, mode, number of processes, threads, resolution,
-occupied voxels, tested candidate voxels, estimated FLOPs, load time and
-voxelization time.
+Esta branch usa dos patrones vistos en CS4052:
 
-## Models
+- `MPI_Scatterv` para repartir porciones no necesariamente iguales del arreglo de triangulos.
+- `MPI_Datatype` derivado para comunicar `Triangle` y `Bounds` sin tratarlos como bytes crudos.
 
-Tracked small models:
-
-- `models/triangle.obj`
-- `models/tetra.obj`
-- `models/blocky_creeper_like.obj`
-- `models/blocky_skeleton_like.obj`
-
-The Stanford Bunny is used for the report benchmark but is not committed as a
-large binary asset. It can be prepared with:
-
-```bash
-python3 scripts/prepare_bunny.py
-```
-
-## Experiments
-
-The main summarized experiment files are:
-
-- `results/metrics.csv`: Stanford Bunny MPI runs.
-- `results/local_summary_median_20260705.csv`: local multi-mode CPU summary.
-- `results/khipu_cpu_small_summary_20260705.csv`: Khipu CPU smoke summary.
-- `results/khipu_cuda_atomic_summary_20260705.csv`: Khipu CUDA atomic smoke summary.
-
-To run new experiments:
-
-```bash
-python3 scripts/run_experiments.py --smoke
-python3 scripts/run_experiments.py --mesh models/stanford-bunny/bun_zipper.ply --mode mpi
-```
-
-## Report
-
-The final report is in:
+El analisis esperado en el informe debe presentarse como:
 
 ```text
-report/main.tex
-report/main.pdf
+metodo -> particionamiento -> comunicacion -> Tp = Tcomp + Tcomm -> S -> E -> escalabilidad
 ```
 
-It explains the PRAM model, Foster design, MPI/OpenMP/CUDA tradeoffs, speedup,
-efficiency, overhead, Khipu validation and limitations.
+Para una explicacion mas detallada de `rank`, `k`, `m*k/p`, OR global y complejidad,
+leer `docs/COURSE_ANALYSIS.md`.
+
+Para revisar el codigo paso a paso antes de adaptarlo a un estilo mas compacto, leer
+`docs/CODE_WALKTHROUGH.md`.
+
+Para correr experimentos y generar graficas, leer `README_2.md`. Los resultados
+consolidados estan en `results/metrics.csv` y `results/plots/`.
+
+El informe debe vivir en `report/`.
+
+## Betas para el informe parcial
+
+1. Beta 1: carga de malla con Assimp y conversion a arreglo de triangulos.
+2. Beta 2: voxelizacion secuencial aproximada por bounding boxes.
+3. Beta 3: reparto MPI por triangulos, reduccion bitwise y metricas.
