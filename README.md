@@ -58,6 +58,7 @@ OpenMP:
 Projection image:
 
 ```bash
+mkdir -p outputs
 ./build/voxelization models/blocky_creeper_like.obj 128 outputs/creeper_128.pgm --mode omp_atomic --threads 4
 ```
 
@@ -74,28 +75,8 @@ Tracked small models:
 - `models/blocky_creeper_like.obj`
 - `models/blocky_skeleton_like.obj`
 
-The Stanford Bunny is used for the report benchmark but is not committed as a
-large binary asset. It can be prepared with:
-
-```bash
-python3 scripts/prepare_bunny.py
-```
-
-## Experiments
-
-The main summarized experiment files are:
-
-- `results/metrics.csv`: Stanford Bunny MPI runs.
-- `results/local_summary_median_20260705.csv`: local multi-mode CPU summary.
-- `results/khipu_cpu_small_summary_20260705.csv`: Khipu CPU smoke summary.
-- `results/khipu_cuda_atomic_summary_20260705.csv`: Khipu CUDA atomic smoke summary.
-
-To run new experiments:
-
-```bash
-python3 scripts/run_experiments.py --smoke
-python3 scripts/run_experiments.py --mesh models/stanford-bunny/bun_zipper.ply --mode mpi
-```
+The Stanford Bunny benchmark used in the report is not committed as a large
+binary asset; the report includes the summarized measurements.
 
 ## Report
 
