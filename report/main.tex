@@ -132,7 +132,7 @@ Using Brent's theorem, an ideal parallel bound is then:
 This bound explains the main limitation of triangle partitioning: if a few
 triangles cover very large AABBs, load balancing can degrade.
 
-    \subsection{Foster Design}
+\subsection{Foster Design}
 
 The implementation follows Foster's four design stages. In the partitioning
 stage, the independent work units are triangles; each unit generates the
@@ -148,17 +148,17 @@ tile-based spatial decomposition.
     \caption{Foster design summary.}
     \begin{tabular}{ll}
         \toprule
-        Stage & Decision \\
+        Stage         & Decision                                     \\
         \midrule
-        Partitioning & Split the triangle list into ranges \\
+        Partitioning  & Split the triangle list into ranges          \\
         Communication & Broadcast/scatter triangles; OR-reduce grids \\
-        Agglomeration & Pack voxels into 64-bit words \\
-        Mapping & One range per rank/thread \\
+        Agglomeration & Pack voxels into 64-bit words                \\
+        Mapping       & One range per rank/thread                    \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-    \section{Parallel Implementations}
+\section{Parallel Implementations}
 
 \subsection{MPI}
 
@@ -190,10 +190,16 @@ a factor that is close to the number of threads.
 \subsection{OpenMP with Atomic Updates}
 
 The \texttt{omp\_atomic} variant uses a shared bitset grid. Each update uses an
-atomic OR on the 64-bit word that contains the target voxel bit:
+atomic OR on the 64-bit word that contains the target voxel bit.
+
+Here we must also define a term that represents the overhead of atomic
+operations. $U$ is defined as the number of grid updates across all threads,
+while $T_{\text{atomic}}$ is the additional time that is required for a single
+atomic operation. Additionaly, the contention term models the additional delay
+that might occur when multiple threads access the same word (cache coherence).
 
 \[
-    T_p^{\text{OMP-atomic}} \approx \frac{C}{p} + A C_{\text{atomic}} + C_{\text{contention}}
+    T_p^{\text{OMP-atomic}} \approx \frac{C}{p} + U T_{\text{atomic}} + T_{\text{contention}}
 \]
 
 This version saves memory, but several threads can contend for the same 64-bit
@@ -201,11 +207,11 @@ word even when they update different voxel bits.
 
 \subsection{CUDA with Atomic Updates}
 
-The \texttt{cuda\_atomic} prototype ports the shared-grid atomic strategy to the
-GPU. It copies the triangle array to device memory, allocates a bit-packed grid
-on the GPU, launches one CUDA thread per triangle, and uses \texttt{atomicOr}
-for each candidate voxel bit. The result is copied back to the CPU and checked
-with the same occupancy metrics as the CPU modes.
+The \texttt{cuda\_atomic} prototype ports the shared-grid atomic strategy to
+the GPU.\@ It copies the triangle array to device memory, allocates a
+bit-packed grid on the GPU, launches one CUDA thread per triangle, and uses
+\texttt{atomicOr} for each candidate voxel bit. The result is copied back to
+the CPU and checked with the same occupancy metrics as the CPU modes.
 
 This version is intentionally minimal. It answers whether a direct GPU port of
 the current AABB algorithm is enough. It does not implement tile binning,
@@ -220,7 +226,7 @@ $T_s$ is the same mode with $p=1$. The metrics are:
     S(p)   & =\frac{T_s}{T_p},    &
     E(p)   & =\frac{S(p)}{p},       \\
     T_o(p) & =pT_p-T_s,           &
-    R_O(p) & =\frac{T_o(p)}{T_s}.
+    R_o(p) & =\frac{T_o(p)}{T_s}.
 \end{align}
 
 The experiments use several models with different roles. Small OBJ models are
@@ -233,11 +239,11 @@ $69{,}451$ triangles and exposes the effect of computation versus overhead.
     \caption{Models used in the evaluation.}
     \begin{tabular}{lrl}
         \toprule
-        Model & Triangles & Role \\
+        Model           & Triangles & Role                        \\
         \midrule
-        Triangle/tetra & 1--4 & Smoke tests \\
-        Blocky/skeleton & 72--96 & Visual and CUDA portability \\
-        Stanford Bunny & 69,451 & Scaling benchmark \\
+        Triangle/tetra  & 1--4      & Smoke tests                 \\
+        Blocky/skeleton & 72--96    & Visual and CUDA portability \\
+        Stanford Bunny  & 69,451    & Scaling benchmark           \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -291,14 +297,14 @@ reduction is significant relative to the computation.
         \toprule
         $r$ & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ \\
         \midrule
-        128 & 1 & 0.012897 & 1.000 & 1.000 \\
-        128 & 2 & 0.007408 & 1.741 & 0.871 \\
-        128 & 4 & 0.004490 & 2.873 & 0.718 \\
-        128 & 8 & 0.005638 & 2.288 & 0.286 \\
-        512 & 1 & 0.078667 & 1.000 & 1.000 \\
-        512 & 2 & 0.062191 & 1.265 & 0.632 \\
-        512 & 4 & 0.085296 & 0.922 & 0.231 \\
-        512 & 8 & 0.105886 & 0.743 & 0.093 \\
+        128 & 1   & 0.012897  & 1.000  & 1.000  \\
+        128 & 2   & 0.007408  & 1.741  & 0.871  \\
+        128 & 4   & 0.004490  & 2.873  & 0.718  \\
+        128 & 8   & 0.005638  & 2.288  & 0.286  \\
+        512 & 1   & 0.078667  & 1.000  & 1.000  \\
+        512 & 2   & 0.062191  & 1.265  & 0.632  \\
+        512 & 4   & 0.085296  & 0.922  & 0.231  \\
+        512 & 8   & 0.105886  & 0.743  & 0.093  \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -328,14 +334,14 @@ allocation.
     \caption{Khipu GPU debug results for the blocky model.}
     \begin{tabular}{lrrr}
         \toprule
-        Mode & $r$ & $T_p$ (s) & Tested voxels \\
+        Mode             & $r$ & $T_p$ (s) & Tested voxels \\
         \midrule
-        MPI $p=1$ & 128 & 0.000639 & 277944 \\
-        OMP atomic $t=4$ & 128 & 0.002261 & 277944 \\
-        CUDA atomic & 128 & 0.311759 & 277944 \\
-        MPI $p=1$ & 512 & 0.022754 & 4380856 \\
-        OMP atomic $t=4$ & 512 & 0.042784 & 4380856 \\
-        CUDA atomic & 512 & 0.410128 & 4380856 \\
+        MPI $p=1$        & 128 & 0.000639  & 277944        \\
+        OMP atomic $t=4$ & 128 & 0.002261  & 277944        \\
+        CUDA atomic      & 128 & 0.311759  & 277944        \\
+        MPI $p=1$        & 512 & 0.022754  & 4380856       \\
+        OMP atomic $t=4$ & 512 & 0.042784  & 4380856       \\
+        CUDA atomic      & 512 & 0.410128  & 4380856       \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -365,8 +371,8 @@ others. A tile-based algorithm could assign disjoint voxel regions to workers
 and eliminate the final OR reduction, but a naive tile implementation would
 compare too many triangles against too many voxels. Its work is
 $\Theta(mr^3/p)$ per parallel step without spatial filtering, while the current
-triangle-based implementation visits only $C=\sum_i c_i$ candidate voxels.
-For example, a mesh with $69{,}451$ triangles at $r=512$ would imply about
+triangle-based implementation visits only $C=\sum_i c_i$ candidate voxels. For
+example, a mesh with $69{,}451$ triangles at $r=512$ would imply about
 $9.3\times10^{12}$ triangle-voxel tests in the naive all-triangles-per-tile
 approach. Practical tile-based voxelizers need spatial filtering structures
 such as binning, BVH, octrees, or sparse grids.
@@ -374,8 +380,8 @@ such as binning, BVH, octrees, or sparse grids.
 \subsection{Why CUDA Was Not the Main Delivery}
 
 CUDA is technically attractive, especially when a local GPU is available, and
-the implemented \texttt{cuda\_atomic} prototype confirms that the project can run
-on Khipu's Tesla T4 GPU. However, the limiting issue is not only whether a
+the implemented \texttt{cuda\_atomic} prototype confirms that the project can
+run on Khipu's Tesla T4 GPU. However, the limiting issue is not only whether a
 kernel can be launched. A fast GPU version needs a better memory layout, less
 atomic contention, transfer timing, and output validation against the CPU
 implementation.
@@ -391,10 +397,10 @@ private grids, before counting triangles, auxiliary buffers, CUDA runtime
 overhead, and temporary reductions.
 
 Therefore, CUDA is reasonable future work only if paired with a better memory
-strategy, such as tile binning, block-level reductions, or sparse grids. For this
-delivery, MPI and OpenMP remain the main defensible comparison of distributed
-and shared memory overheads, while \texttt{cuda\_atomic} is reported as a
-validated but non-competitive prototype.
+strategy, such as tile binning, block-level reductions, or sparse grids. For
+this delivery, MPI and OpenMP remain the main defensible comparison of
+distributed and shared memory overheads, while \texttt{cuda\_atomic} is
+reported as a validated but non-competitive prototype.
 
 \section{Conclusion}
 
