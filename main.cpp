@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
-#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
