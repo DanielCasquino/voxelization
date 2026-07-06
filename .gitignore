@@ -1,6 +1,7 @@
 .vscode
 /bunny
 /build
+/build-cuda
 /cmake-build-debug
 /outputs
 /models/stanford-bunny/*.ply

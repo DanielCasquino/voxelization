@@ -12,48 +12,48 @@
 \usepackage{xcolor}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
-    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 \begin{document}
 
 \title{Parallel Voxelization of Triangle Meshes}
 
 \author{\IEEEauthorblockN{1\textsuperscript{st} Jose Francisco Paca Sotero}
-    \IEEEauthorblockA{\textit{Faculty of Computing} \\
-        \textit{University of Engineering and Technology (UTEC)}\\
-        Lima, Peru \\
-        jose.paca@utec.edu.pe}
-    \and
-    \IEEEauthorblockN{2\textsuperscript{nd} Diva Stewart Maquera Bobadilla}
-    \IEEEauthorblockA{\textit{Faculty of Computing} \\
-        \textit{University of Engineering and Technology (UTEC)}\\
-        Lima, Peru \\
-        diva.maquera@utec.edu.pe}
-    \and
-    \IEEEauthorblockN{3\textsuperscript{rd} Daniel Ignacio Casquino Paz}
-    \IEEEauthorblockA{\textit{Faculty of Computing} \\
-        \textit{University of Engineering and Technology (UTEC)}\\
-        Lima, Peru \\
-        daniel.casquino@utec.edu.pe}
+  \IEEEauthorblockA{\textit{Faculty of Computing} \\
+    \textit{University of Engineering and Technology (UTEC)}\\
+    Lima, Peru \\
+  jose.paca@utec.edu.pe}
+  \and
+  \IEEEauthorblockN{2\textsuperscript{nd} Diva Stewart Maquera Bobadilla}
+  \IEEEauthorblockA{\textit{Faculty of Computing} \\
+    \textit{University of Engineering and Technology (UTEC)}\\
+    Lima, Peru \\
+  diva.maquera@utec.edu.pe}
+  \and
+  \IEEEauthorblockN{3\textsuperscript{rd} Daniel Ignacio Casquino Paz}
+  \IEEEauthorblockA{\textit{Faculty of Computing} \\
+    \textit{University of Engineering and Technology (UTEC)}\\
+    Lima, Peru \\
+  daniel.casquino@utec.edu.pe}
 }
 
 \maketitle
 
 \begin{abstract}
-    This paper presents a parallel implementation of conservative voxelization for
-    triangle meshes. The main implementation uses MPI to distribute triangles across
-    processes, build private bit-packed voxel grids, and merge the final result with
-    a bitwise OR reduction. To justify the selected paradigm, two shared-memory
-    OpenMP variants are also implemented: one with a private grid per thread and one
-    with a shared grid updated through atomic OR operations. Finally, a minimal
-    CUDA atomic prototype is evaluated on Khipu to measure whether directly
-    porting the atomic strategy to GPU is worthwhile. The evaluation compares
-    execution time, speedup, efficiency, and experimental overhead on synthetic
-    models and on the Stanford Bunny mesh.
+  This paper presents a parallel implementation of conservative voxelization for
+  triangle meshes. The main implementation uses MPI to distribute triangles across
+  processes, build private bit-packed voxel grids, and merge the final result with
+  a bitwise OR reduction. To justify the selected paradigm, two shared-memory
+  OpenMP variants are also implemented: one with a private grid per thread and one
+  with a shared grid updated through atomic OR operations. Finally, a minimal
+  CUDA atomic prototype is evaluated on Khipu to measure whether directly
+  porting the atomic strategy to GPU is worthwhile. The evaluation compares
+  execution time, speedup, efficiency, and experimental overhead on synthetic
+  models and on the Stanford Bunny mesh.
 \end{abstract}
 
 \begin{IEEEkeywords}
-    voxelization, MPI, OpenMP, CUDA, parallel computing, overhead, PRAM
+  voxelization, MPI, OpenMP, CUDA, parallel computing, overhead, PRAM
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -95,38 +95,38 @@ a logical OR, as marking the same voxel multiple times still leaves the final
 bit set to one.
 
 \begin{algorithm}
-    \caption{Voxelization (PRAM)}
-    \begin{algorithmic}[1]
-        \State$B \gets \text{empty bitset}$
-        \State$T \gets \text{triangulate}(\text{model.load}(path)).faces$
-        \ForAll{$t$ \textbf{in} $T$ \textbf{pardo}}
-        \ForAll{candidate voxel $v$ \textbf{inside AABB of} $t$}
-        \State$i \gets \text{index}(v)$
-        \State$B[i] \gets B[i] \lor 1$
-        \EndFor{}
-        \EndFor{}
-        \State\Return$B$
-    \end{algorithmic}
+  \caption{Voxelization (PRAM)}
+  \begin{algorithmic}[1]
+    \State$B \gets \text{empty bitset}$
+    \State$T \gets \text{triangulate}(\text{model.load}(path)).faces$
+    \ForAll{$t$ \textbf{in} $T$ \textbf{pardo}}
+    \ForAll{candidate voxel $v$ \textbf{inside AABB of} $t$}
+    \State$i \gets \text{index}(v)$
+    \State$B[i] \gets B[i] \lor 1$
+    \EndFor{}
+    \EndFor{}
+    \State\Return$B$
+  \end{algorithmic}
 \end{algorithm}
 
 $c_i$ is defined as the number of candidate voxels visited for triangle $t_i$. Then,
 $C=\sum_{i=0}^{m-1} c_i$. The sequential work of the voxelization stage is:
 
 \[
-    T_s = \Theta(m + C)
+  T_s = \Theta(m + C)
 \]
 
 With unbounded PRAM processors over triangles, the span is dominated by the
 largest triangle AABB:\@
 
 \[
-    T_{\infty} = O(\max_i c_i)
+  T_{\infty} = O(\max_i c_i)
 \]
 
 Using Brent's theorem, an ideal parallel bound is then:
 
 \[
-    T_p = O\left(\frac{m+C}{p} + \max_i c_i\right)
+  T_p = O\left(\frac{m+C}{p} + \max_i c_i\right)
 \]
 
 This bound explains the main limitation of triangle partitioning: if a few
@@ -144,18 +144,18 @@ OpenMP threads. This is coarse-grained task parallelism over triangles, not a
 tile-based spatial decomposition.
 
 \begin{table}[t]
-    \centering
-    \caption{Foster design summary.}
-    \begin{tabular}{ll}
-        \toprule
-        Stage         & Decision                                     \\
-        \midrule
-        Partitioning  & Split the triangle list into ranges          \\
-        Communication & Broadcast/scatter triangles; OR-reduce grids \\
-        Agglomeration & Pack voxels into 64-bit words                \\
-        Mapping       & One range per rank/thread                    \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Foster design summary.}
+  \begin{tabular}{ll}
+    \toprule
+    Stage         & Decision                                     \\
+    \midrule
+    Partitioning  & Split the triangle list into ranges          \\
+    Communication & Broadcast/scatter triangles; OR-reduce grids \\
+    Agglomeration & Pack voxels into 64-bit words                \\
+    Mapping       & One range per rank/thread                    \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 \section{Parallel Implementations}
@@ -168,7 +168,7 @@ builds its own local bitset grid. The final grid is obtained with
 \texttt{MPI\_Reduce} and \texttt{MPI\_BOR}.
 
 \[
-    T_p^{\text{MPI}} \approx \frac{C}{p} + T_{\text{scatter}}(m,p) + T_{\text{reduce}}(w,p)
+  T_p^{\text{MPI}} \approx \frac{C}{p} + T_{\text{scatter}}(m,p) + T_{\text{reduce}}(w,p)
 \]
 
 This design avoids data races during voxel marking, as each process writes to
@@ -181,7 +181,7 @@ The \texttt{omp\_private} variant uses one process and multiple threads. Each
 thread writes to a private grid, and all grids are merged with an OR reduction:
 
 \[
-    T_p^{\text{OMP-private}} \approx \frac{C}{p} + T_{\text{reduce\_mem}}(w,p)
+  T_p^{\text{OMP-private}} \approx \frac{C}{p} + T_{\text{reduce\_mem}}(w,p)
 \]
 
 This version avoids atomic operation overhead, but it increases memory usage by
@@ -199,7 +199,7 @@ atomic operation. Additionaly, the contention term models the additional delay
 that might occur when multiple threads access the same word (cache coherence).
 
 \[
-    T_p^{\text{OMP-atomic}} \approx \frac{C}{p} + U T_{\text{atomic}} + T_{\text{contention}}
+  T_p^{\text{OMP-atomic}} \approx \frac{C}{p} + U T_{\text{atomic}} + T_{\text{contention}}
 \]
 
 This version saves memory, but several threads can contend for the same 64-bit
@@ -223,10 +223,10 @@ The measured region is \texttt{voxel\_seconds}. For each mode, the baseline
 $T_s$ is the same mode with $p=1$. The metrics are:
 
 \begin{align}
-    S(p)   & =\frac{T_s}{T_p},    &
-    E(p)   & =\frac{S(p)}{p},       \\
-    T_o(p) & =pT_p-T_s,           &
-    R_o(p) & =\frac{T_o(p)}{T_s}.
+  S(p)   & =\frac{T_s}{T_p},    &
+  E(p)   & =\frac{S(p)}{p},       \\
+  T_o(p) & =pT_p-T_s,           &
+  R_o(p) & =\frac{T_o(p)}{T_s}.
 \end{align}
 
 The experiments use several models with different roles. Small OBJ models are
@@ -235,17 +235,17 @@ on Khipu. The Stanford Bunny is used as the larger benchmark because it has
 $69{,}451$ triangles and exposes the effect of computation versus overhead.
 
 \begin{table}[t]
-    \centering
-    \caption{Models used in the evaluation.}
-    \begin{tabular}{lrl}
-        \toprule
-        Model           & Triangles & Role                        \\
-        \midrule
-        Triangle/tetra  & 1--4      & Smoke tests                 \\
-        Blocky/skeleton & 72--96    & Visual and CUDA portability \\
-        Stanford Bunny  & 69,451    & Scaling benchmark           \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Models used in the evaluation.}
+  \begin{tabular}{lrl}
+    \toprule
+    Model           & Triangles & Role                        \\
+    \midrule
+    Triangle/tetra  & 1--4      & Smoke tests                 \\
+    Blocky/skeleton & 72--96    & Visual and CUDA portability \\
+    Stanford Bunny  & 69,451    & Scaling benchmark           \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 Local multi-mode experiments used \texttt{blocky\_creeper\_like}, grid
@@ -254,34 +254,35 @@ configuration. MPI scaling was also measured on the Stanford Bunny for
 $p\in\{1,2,4,8\}$.
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=0.31\linewidth]{../outputs/bunny_96.png}
-    \includegraphics[width=0.31\linewidth]{../outputs/creeper_128.png}
-    \includegraphics[width=0.31\linewidth]{../outputs/skeleton_128.png}
-    \caption{Z-projection images of voxelized Bunny, creeper-like, and skeleton-like models.}
-    \label{fig:voxel-projections}
+  \centering
+  \includegraphics[width=0.31\linewidth]{../outputs/bunny_96.png}
+  \includegraphics[width=0.31\linewidth]{../outputs/creeper_128.png}
+  \includegraphics[width=0.31\linewidth]{../outputs/skeleton_128.png}
+  \caption{Z-projection images of voxelized Bunny, creeper-like, and skeleton-like models.}
+  \label{fig:voxel-projections}
 \end{figure}
 
 \section{Results}
 
 \begin{table}[t]
-    \centering
-    \caption{Local results for resolution 128, median of three runs.}
-    \begin{tabular}{lrrrrr}
-        \toprule
-        Mode        & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ & $O/T_s$ \\
-        \midrule
-        MPI         & 1   & 0.002703  & 1.000  & 1.000  & 0.000   \\
-        MPI         & 2   & 0.001755  & 1.540  & 0.770  & 0.299   \\
-        MPI         & 4   & 0.002288  & 1.181  & 0.295  & 2.386   \\
-        OMP atomic  & 1   & 0.003745  & 1.000  & 1.000  & 0.000   \\
-        OMP atomic  & 2   & 0.002837  & 1.320  & 0.660  & 0.515   \\
-        OMP atomic  & 4   & 0.002061  & 1.817  & 0.454  & 1.201   \\
-        OMP private & 1   & 0.003016  & 1.000  & 1.000  & 0.000   \\
-        OMP private & 2   & 0.002748  & 1.098  & 0.549  & 0.822   \\
-        OMP private & 4   & 0.002948  & 1.023  & 0.256  & 2.910   \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Local results for resolution 128, median of three runs.}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Mode        & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ & $O/T_s$ \\
+    \midrule
+    MPI         & 1   & 0.002703  & 1.000  & 1.000  & 0.000   \\
+    MPI         & 2   & 0.001755  & 1.540  & 0.770  & 0.299   \\
+    MPI         & 4   & 0.002288  & 1.181  & 0.295  & 2.386   \\
+    OMP atomic  & 1   & 0.003745  & 1.000  & 1.000  & 0.000   \\
+    OMP atomic  & 2   & 0.002837  & 1.320  & 0.660  & 0.515   \\
+    OMP atomic  & 4   & 0.002061  & 1.817  & 0.454  & 1.201   \\
+    OMP private & 1   & 0.003016  & 1.000  & 1.000  & 0.000   \\
+    OMP private & 2   & 0.002748  & 1.098  & 0.549  & 0.822   \\
+    OMP private & 4   & 0.002948  & 1.023  & 0.256  & 2.910   \\
+    OMP atomic CUDA (local) & 1   & 0.304685  & ---  & ---  & ---   \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 For resolutions $32$ and $64$, the measured times are very small and overhead
@@ -291,22 +292,22 @@ does not clearly outperform the other variants because the private-grid
 reduction is significant relative to the computation.
 
 \begin{table}[t]
-    \centering
-    \caption{MPI results on the Stanford Bunny.}
-    \begin{tabular}{rrrrr}
-        \toprule
-        $r$ & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ \\
-        \midrule
-        128 & 1   & 0.012897  & 1.000  & 1.000  \\
-        128 & 2   & 0.007408  & 1.741  & 0.871  \\
-        128 & 4   & 0.004490  & 2.873  & 0.718  \\
-        128 & 8   & 0.005638  & 2.288  & 0.286  \\
-        512 & 1   & 0.078667  & 1.000  & 1.000  \\
-        512 & 2   & 0.062191  & 1.265  & 0.632  \\
-        512 & 4   & 0.085296  & 0.922  & 0.231  \\
-        512 & 8   & 0.105886  & 0.743  & 0.093  \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{MPI results on the Stanford Bunny.}
+  \begin{tabular}{rrrrr}
+    \toprule
+    $r$ & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ \\
+    \midrule
+    128 & 1   & 0.012897  & 1.000  & 1.000  \\
+    128 & 2   & 0.007408  & 1.741  & 0.871  \\
+    128 & 4   & 0.004490  & 2.873  & 0.718  \\
+    128 & 8   & 0.005638  & 2.288  & 0.286  \\
+    512 & 1   & 0.078667  & 1.000  & 1.000  \\
+    512 & 2   & 0.062191  & 1.265  & 0.632  \\
+    512 & 4   & 0.085296  & 0.922  & 0.231  \\
+    512 & 8   & 0.105886  & 0.743  & 0.093  \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 The Bunny results show the same strong-scaling pattern from the course: for a
@@ -330,20 +331,20 @@ approach was to reserve resources with Slurm and use \texttt{mpirun} inside the
 allocation.
 
 \begin{table}[t]
-    \centering
-    \caption{Khipu GPU debug results for the blocky model.}
-    \begin{tabular}{lrrr}
-        \toprule
-        Mode             & $r$ & $T_p$ (s) & Tested voxels \\
-        \midrule
-        MPI $p=1$        & 128 & 0.000639  & 277944        \\
-        OMP atomic $t=4$ & 128 & 0.002261  & 277944        \\
-        CUDA atomic      & 128 & 0.311759  & 277944        \\
-        MPI $p=1$        & 512 & 0.022754  & 4380856       \\
-        OMP atomic $t=4$ & 512 & 0.042784  & 4380856       \\
-        CUDA atomic      & 512 & 0.410128  & 4380856       \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Khipu GPU debug results for the blocky model.}
+  \begin{tabular}{lrrr}
+    \toprule
+    Mode             & $r$ & $T_p$ (s) & Tested voxels \\
+    \midrule
+    MPI $p=1$        & 128 & 0.000639  & 277944        \\
+    OMP atomic $t=4$ & 128 & 0.002261  & 277944        \\
+    CUDA atomic      & 128 & 0.311759  & 277944        \\
+    MPI $p=1$        & 512 & 0.022754  & 4380856       \\
+    OMP atomic $t=4$ & 512 & 0.042784  & 4380856       \\
+    CUDA atomic      & 512 & 0.410128  & 4380856       \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 The CUDA prototype produced the same occupied voxel counts as the CPU versions,
@@ -396,6 +397,8 @@ grid, about $r=2953$ with four private grids, and about $r=2344$ with eight
 private grids, before counting triangles, auxiliary buffers, CUDA runtime
 overhead, and temporary reductions.
 
+These limits were tested locally on an NVIDIA GeForce RTX 5070, which has 12 GiB of VRAM. The \texttt{cuda\_atomic} prototype ran successfully for cases up to $r=2048$, but it failed for $r=4096$ and above due to memory limitations.
+
 Therefore, CUDA is reasonable future work only if paired with a better memory
 strategy, such as tile binning, block-level reductions, or sparse grids. For
 this delivery, MPI and OpenMP remain the main defensible comparison of
@@ -423,14 +426,14 @@ technical references below. AI was not used as a primary source for
 experimental results.
 
 \begin{thebibliography}{00}
-    \bibitem{b1} M. Schwarz and H.-P. Seidel, ``Fast parallel surface and solid voxelization on GPUs,'' \textit{ACM Transactions on Graphics}, vol. 29, no. 6, Article 179, 2010.
-    \bibitem{b2} T. Akenine-Moller, ``Fast 3D triangle-box overlap testing,'' \textit{Journal of Graphics Tools}, vol. 6, no. 1, pp. 29--33, 2001.
-    \bibitem{b3} I. Foster, \textit{Designing and Building Parallel Programs: Concepts and Tools for Parallel Software Engineering}. Addison-Wesley, 1995.
-    \bibitem{b4} Open MPI Project, ``MPI\_Scatterv(3), MPI\_Bcast(3), and MPI\_Reduce(3) manual pages,'' Open MPI Documentation. [Online]. Available: https://www.open-mpi.org/doc/
-    \bibitem{b5} OpenMP Architecture Review Board, ``OpenMP API Specification,'' 2024. [Online]. Available: https://www.openmp.org/specifications/
-    \bibitem{b6} Open Asset Import Library, ``Assimp: Open Asset Import Library.'' [Online]. Available: https://www.assimp.org/
-    \bibitem{b7} UTEC Khipu, ``Khipu documentation.'' [Online]. Available: https://docs.khipu.utec.edu.pe/
-    \bibitem{b8} OpenAI, ``ChatGPT/Codex,'' large language model, 2026. [Online]. Available: https://chat.openai.com/
+  \bibitem{b1} M. Schwarz and H.-P. Seidel, ``Fast parallel surface and solid voxelization on GPUs,'' \textit{ACM Transactions on Graphics}, vol. 29, no. 6, Article 179, 2010.
+  \bibitem{b2} T. Akenine-Moller, ``Fast 3D triangle-box overlap testing,'' \textit{Journal of Graphics Tools}, vol. 6, no. 1, pp. 29--33, 2001.
+  \bibitem{b3} I. Foster, \textit{Designing and Building Parallel Programs: Concepts and Tools for Parallel Software Engineering}. Addison-Wesley, 1995.
+  \bibitem{b4} Open MPI Project, ``MPI\_Scatterv(3), MPI\_Bcast(3), and MPI\_Reduce(3) manual pages,'' Open MPI Documentation. [Online]. Available: https://www.open-mpi.org/doc/
+  \bibitem{b5} OpenMP Architecture Review Board, ``OpenMP API Specification,'' 2024. [Online]. Available: https://www.openmp.org/specifications/
+  \bibitem{b6} Open Asset Import Library, ``Assimp: Open Asset Import Library.'' [Online]. Available: https://www.assimp.org/
+  \bibitem{b7} UTEC Khipu, ``Khipu documentation.'' [Online]. Available: https://docs.khipu.utec.edu.pe/
+  \bibitem{b8} OpenAI, ``ChatGPT/Codex,'' large language model, 2026. [Online]. Available: https://chat.openai.com/
 \end{thebibliography}
 
 \end{document}
