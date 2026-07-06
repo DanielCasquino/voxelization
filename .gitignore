@@ -4,6 +4,7 @@
 /cmake-build-debug
 /outputs
 /models/stanford-bunny/*.ply
+/models/stanford-bunny/*.obj
 /results/raw
 /results/.matplotlib
 /results/local-*/

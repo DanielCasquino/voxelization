@@ -48,8 +48,8 @@
     with a shared grid updated through atomic OR operations. Finally, a minimal
     CUDA atomic prototype is evaluated on Khipu to measure whether directly
     porting the atomic strategy to GPU is worthwhile. The evaluation compares
-    execution time, speedup, efficiency, and experimental overhead for small and
-    moderate grid resolutions.
+    execution time, speedup, efficiency, and experimental overhead on synthetic
+    models and on the Stanford Bunny mesh.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -132,7 +132,33 @@ Using Brent's theorem, an ideal parallel bound is then:
 This bound explains the main limitation of triangle partitioning: if a few
 triangles cover very large AABBs, load balancing can degrade.
 
-\section{Parallel Implementations}
+    \subsection{Foster Design}
+
+The implementation follows Foster's four design stages. In the partitioning
+stage, the independent work units are triangles; each unit generates the
+candidate voxels inside one AABB. Communication consists of distributing
+triangles and combining the local bitsets with OR. Agglomeration groups many
+triangles per worker and packs 64 voxels per word to reduce memory and
+communication. Mapping assigns contiguous triangle ranges to MPI ranks or
+OpenMP threads. This is coarse-grained task parallelism over triangles, not a
+tile-based spatial decomposition.
+
+\begin{table}[t]
+    \centering
+    \caption{Foster design summary.}
+    \begin{tabular}{ll}
+        \toprule
+        Stage & Decision \\
+        \midrule
+        Partitioning & Split the triangle list into ranges \\
+        Communication & Broadcast/scatter triangles; OR-reduce grids \\
+        Agglomeration & Pack voxels into 64-bit words \\
+        Mapping & One range per rank/thread \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+    \section{Parallel Implementations}
 
 \subsection{MPI}
 
@@ -197,10 +223,38 @@ $T_s$ is the same mode with $p=1$. The metrics are:
     R_O(p) & =\frac{T_o(p)}{T_s}.
 \end{align}
 
-Local experiments used the OBJ model \texttt{blocky\_creeper\_like}, grid
+The experiments use several models with different roles. Small OBJ models are
+used for correctness and cross-platform tests because they load without Assimp
+on Khipu. The Stanford Bunny is used as the larger benchmark because it has
+$69{,}451$ triangles and exposes the effect of computation versus overhead.
+
+\begin{table}[t]
+    \centering
+    \caption{Models used in the evaluation.}
+    \begin{tabular}{lrl}
+        \toprule
+        Model & Triangles & Role \\
+        \midrule
+        Triangle/tetra & 1--4 & Smoke tests \\
+        Blocky/skeleton & 72--96 & Visual and CUDA portability \\
+        Stanford Bunny & 69,451 & Scaling benchmark \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Local multi-mode experiments used \texttt{blocky\_creeper\_like}, grid
 resolutions $32$, $64$, and $128$, $p\in\{1,2,4\}$, and three repetitions per
-configuration. Table I reports the median for resolution $128$, where the
-parallel work is large enough to expose speedup in some modes.
+configuration. MPI scaling was also measured on the Stanford Bunny for
+$p\in\{1,2,4,8\}$.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.31\linewidth]{../outputs/bunny_96.png}
+    \includegraphics[width=0.31\linewidth]{../outputs/creeper_128.png}
+    \includegraphics[width=0.31\linewidth]{../outputs/skeleton_128.png}
+    \caption{Z-projection images of voxelized Bunny, creeper-like, and skeleton-like models.}
+    \label{fig:voxel-projections}
+\end{figure}
 
 \section{Results}
 
@@ -229,6 +283,30 @@ dominates. At resolution $128$, MPI obtains its best local point at $p=2$.
 OpenMP atomic improves up to $p=4$ in this small mesh, while OpenMP private
 does not clearly outperform the other variants because the private-grid
 reduction is significant relative to the computation.
+
+\begin{table}[t]
+    \centering
+    \caption{MPI results on the Stanford Bunny.}
+    \begin{tabular}{rrrrr}
+        \toprule
+        $r$ & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ \\
+        \midrule
+        128 & 1 & 0.012897 & 1.000 & 1.000 \\
+        128 & 2 & 0.007408 & 1.741 & 0.871 \\
+        128 & 4 & 0.004490 & 2.873 & 0.718 \\
+        128 & 8 & 0.005638 & 2.288 & 0.286 \\
+        512 & 1 & 0.078667 & 1.000 & 1.000 \\
+        512 & 2 & 0.062191 & 1.265 & 0.632 \\
+        512 & 4 & 0.085296 & 0.922 & 0.231 \\
+        512 & 8 & 0.105886 & 0.743 & 0.093 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The Bunny results show the same strong-scaling pattern from the course: for a
+fixed problem, the best $p$ is finite. At $r=128$, the larger triangle count
+amortizes MPI overhead up to $p=4$. At $r=512$, the dense grid reduction and
+memory traffic dominate after $p=2$ in the measured laptop run.
 
 \section{Khipu Validation}
 
@@ -270,7 +348,7 @@ decision not to use this direct CUDA port as the main delivery.
 
 The results show that increasing $p$ does not always reduce execution time. For
 strong scaling, the problem size is fixed, so local computation decreases
-approximately as $B_c/p$, but reduction, synchronization, launch, and memory
+approximately as $C/p$, but reduction, synchronization, launch, and memory
 costs do not disappear. Therefore, the best $p$ is not necessarily the largest
 available $p$.
 
