@@ -219,15 +219,16 @@ block-private grids, prefix sums, or sparse structures.
 
 \section{Experimental Methodology}
 
-The measured region is \texttt{voxel\_seconds}. For each mode, the baseline
-$T_s$ is the same mode with $p=1$. The metrics are:
+The measured region is \texttt{voxel\_seconds}. For each mode, the sequential
+baseline $T_s$ is the same mode with $p=1$. The metrics are:
 
 \begin{align}
   S(p)   & =\frac{T_s}{T_p},    &
   E(p)   & =\frac{S(p)}{p},       \\
-  T_o(p) & =pT_p-T_s,           &
-  R_o(p) & =\frac{T_o(p)}{T_s}.
+  T_o(p) & =pT_p-T_s.
 \end{align}
+
+When needed, $T_o/T_s$ is used only as a normalized overhead ratio.
 
 The experiments use several models with different roles. Small OBJ models are
 used for correctness and cross-platform tests because they load without Assimp
@@ -264,26 +265,26 @@ $p\in\{1,2,4,8\}$.
 
 \section{Results}
 
-\begin{table}[t]
+\begin{table*}[t]
   \centering
-  \caption{Local results for resolution 128, median of three runs.}
-  \begin{tabular}{lrrrrr}
+  \caption{Local results for resolution 128, median of three runs. For each mode, $T_s$ is the measured $p=1$ time of that same mode.}
+  \begin{tabular}{lrrrrrr}
     \toprule
-    Mode        & $p$ & $T_p$ (s) & $S(p)$ & $E(p)$ & $O/T_s$ \\
+    Mode        & $p$ & $T_s$ (s) & $T_p$ (s) & $S(p)$ & $E(p)$ & $T_o$ (s) \\
     \midrule
-    MPI         & 1   & 0.002703  & 1.000  & 1.000  & 0.000   \\
-    MPI         & 2   & 0.001755  & 1.540  & 0.770  & 0.299   \\
-    MPI         & 4   & 0.002288  & 1.181  & 0.295  & 2.386   \\
-    OMP atomic  & 1   & 0.003745  & 1.000  & 1.000  & 0.000   \\
-    OMP atomic  & 2   & 0.002837  & 1.320  & 0.660  & 0.515   \\
-    OMP atomic  & 4   & 0.002061  & 1.817  & 0.454  & 1.201   \\
-    OMP private & 1   & 0.003016  & 1.000  & 1.000  & 0.000   \\
-    OMP private & 2   & 0.002748  & 1.098  & 0.549  & 0.822   \\
-    OMP private & 4   & 0.002948  & 1.023  & 0.256  & 2.910   \\
-    OMP atomic CUDA (local) & 1   & 0.304685  & ---  & ---  & ---   \\
+    MPI         & 1   & 0.002703 & 0.002703 & 1.000  & 1.000  & 0.000000 \\
+    MPI         & 2   & 0.002703 & 0.001755 & 1.540  & 0.770  & 0.000807 \\
+    MPI         & 4   & 0.002703 & 0.002288 & 1.181  & 0.295  & 0.006449 \\
+    OMP atomic  & 1   & 0.003745 & 0.003745 & 1.000  & 1.000  & 0.000000 \\
+    OMP atomic  & 2   & 0.003745 & 0.002837 & 1.320  & 0.660  & 0.001929 \\
+    OMP atomic  & 4   & 0.003745 & 0.002061 & 1.817  & 0.454  & 0.004499 \\
+    OMP private & 1   & 0.003016 & 0.003016 & 1.000  & 1.000  & 0.000000 \\
+    OMP private & 2   & 0.003016 & 0.002748 & 1.098  & 0.549  & 0.002480 \\
+    OMP private & 4   & 0.003016 & 0.002948 & 1.023  & 0.256  & 0.008776 \\
+    CUDA atomic (local) & 1 & --- & 0.304685 & ---  & ---  & --- \\
     \bottomrule
   \end{tabular}
-\end{table}
+\end{table*}
 
 For resolutions $32$ and $64$, the measured times are very small and overhead
 dominates. At resolution $128$, MPI obtains its best local point at $p=2$.
