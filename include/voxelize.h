@@ -37,3 +37,10 @@ std::vector<uint64_t> VoxelizeOMPAtomic(const std::vector<Triangle> &triangles,
                                          const Bounds &bounds,
                                          VoxelStats &stats,
                                          int requested_threads);
+
+#ifdef VOXELIZATION_USE_CUDA
+std::vector<uint64_t> VoxelizeCUDAAtomic(const std::vector<Triangle> &triangles,
+                                         int resolution,
+                                         const Bounds &bounds,
+                                         VoxelStats &stats);
+#endif

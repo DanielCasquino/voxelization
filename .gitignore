@@ -8,7 +8,9 @@
 /results/.matplotlib
 /results/local-*/
 /results/khipu-cpu-small/
+/results/khipu-cuda-atomic-small/
 /results/smoke-*/
+/results/ad-hoc-*/
 /report/build
 *.aux
 *.fdb_latexmk

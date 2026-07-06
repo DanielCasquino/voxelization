@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-dir", default=None, type=Path)
     parser.add_argument("--exe", default=None, type=Path)
     parser.add_argument("--processes", default="1,2,4,8", type=parse_int_list)
-    parser.add_argument("--mode", default="mpi", choices=("mpi", "omp_private", "omp_atomic"))
+    parser.add_argument("--mode", default="mpi", choices=("mpi", "omp_private", "omp_atomic", "cuda_atomic"))
     parser.add_argument("--resolutions", default="32,64,96,128", type=parse_int_list)
     parser.add_argument("--repeats", default=DEFAULT_REPEATS, type=int)
     parser.add_argument("--results-dir", default=Path("results"), type=Path)
@@ -265,9 +265,11 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
                 env = os.environ.copy()
                 if args.mode == "mpi":
                     command = [mpi_launcher, "-np", str(processes)] + command
-                else:
+                elif args.mode in ("omp_private", "omp_atomic"):
                     command += ["--threads", str(processes)]
                     env["OMP_NUM_THREADS"] = str(processes)
+                elif processes != 1:
+                    raise RuntimeError("cuda_atomic uses one process; pass --processes 1.")
                 print(
                     f"[{current}/{total}] mode={args.mode} resolution={resolution} "
                     f"p={processes} repeat={repeat}"
@@ -296,7 +298,7 @@ def run_experiments(args: argparse.Namespace) -> list[dict[str, str]]:
                 metrics["repeat"] = str(repeat)
                 if args.mode != "mpi":
                     metrics["processes"] = str(processes)
-                    metrics["threads"] = str(processes)
+                    metrics["threads"] = str(processes if args.mode != "cuda_atomic" else 0)
                 rows.append(metrics)
 
     compute_derived_metrics(rows)

@@ -102,7 +102,13 @@ namespace
         if (positional.size() >= 3)
             options.projection_path = positional[2];
 
-        return options.mode == "mpi" || options.mode == "omp_private" || options.mode == "omp_atomic";
+        if (options.mode == "mpi" || options.mode == "omp_private" || options.mode == "omp_atomic")
+            return true;
+#ifdef VOXELIZATION_USE_CUDA
+        return options.mode == "cuda_atomic";
+#else
+        return false;
+#endif
     }
 
     int ParseObjIndex(const std::string &token)
@@ -258,7 +264,7 @@ int main(int argc, char *argv[])
         if (rank == 0)
         {
             std::fprintf(stderr,
-                         "Usage: %s <mesh-file> [resolution] [projection.pgm] [--mode mpi|omp_private|omp_atomic] [--threads N]\n",
+                         "Usage: %s <mesh-file> [resolution] [projection.pgm] [--mode mpi|omp_private|omp_atomic|cuda_atomic] [--threads N]\n",
                          argv[0]);
         }
         MPI_Finalize();
@@ -268,7 +274,7 @@ int main(int argc, char *argv[])
     if (options.mode != "mpi" && size != 1)
     {
         if (rank == 0)
-            std::fprintf(stderr, "OpenMP modes must be run with one MPI process. Use OMP_NUM_THREADS or --threads for CPU threads.\n");
+            std::fprintf(stderr, "OpenMP/CUDA modes must be run with one MPI process. Use OMP_NUM_THREADS or --threads for CPU threads.\n");
         MPI_Finalize();
         return 1;
     }
@@ -321,8 +327,19 @@ int main(int argc, char *argv[])
         local_grid = Voxelize(local_triangles, resolution, bounds, local_stats);
     else if (options.mode == "omp_private")
         local_grid = VoxelizeOMPPrivate(local_triangles, resolution, bounds, local_stats, options.threads);
-    else
+    else if (options.mode == "omp_atomic")
         local_grid = VoxelizeOMPAtomic(local_triangles, resolution, bounds, local_stats, options.threads);
+    else
+    {
+#ifdef VOXELIZATION_USE_CUDA
+        local_grid = VoxelizeCUDAAtomic(local_triangles, resolution, bounds, local_stats);
+#else
+        if (rank == 0)
+            std::fprintf(stderr, "cuda_atomic mode was not built because CUDA was not available.\n");
+        MPI_Finalize();
+        return 1;
+#endif
+    }
 
     std::vector<uint64_t> global_grid(local_grid.size(), 0);
 

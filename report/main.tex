@@ -45,13 +45,15 @@
     processes, build private bit-packed voxel grids, and merge the final result with
     a bitwise OR reduction. To justify the selected paradigm, two shared-memory
     OpenMP variants are also implemented: one with a private grid per thread and one
-    with a shared grid updated through atomic OR operations. The evaluation compares execution
-    time, speedup, efficiency, and experimental overhead for small and moderate grid
-    resolutions.
+    with a shared grid updated through atomic OR operations. Finally, a minimal
+    CUDA atomic prototype is evaluated on Khipu to measure whether directly
+    porting the atomic strategy to GPU is worthwhile. The evaluation compares
+    execution time, speedup, efficiency, and experimental overhead for small and
+    moderate grid resolutions.
 \end{abstract}
 
 \begin{IEEEkeywords}
-    voxelization, MPI, OpenMP, parallel computing, overhead, PRAM
+    voxelization, MPI, OpenMP, CUDA, parallel computing, overhead, PRAM
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -66,9 +68,10 @@ by the mesh.
 The first version of the project modeled the algorithm in PRAM and identified
 task parallelism over triangles. This final version keeps that idea but
 implements and measures three concrete CPU variants: MPI, OpenMP with private
-grids, and OpenMP with atomic updates. CUDA and tile-based voxelization are
-discussed as future work because they require additional GPU memory management
-or spatial indexing to be correct and measurable.
+grids, and OpenMP with atomic updates. A fourth CUDA atomic prototype is added
+as an experimental comparison, while optimized tile-based or sparse GPU
+voxelization is discussed as future work because it requires additional spatial
+indexing.
 
 \section{Algorithm}
 
@@ -170,6 +173,18 @@ atomic OR on the 64-bit word that contains the target voxel bit:
 This version saves memory, but several threads can contend for the same 64-bit
 word even when they update different voxel bits.
 
+\subsection{CUDA with Atomic Updates}
+
+The \texttt{cuda\_atomic} prototype ports the shared-grid atomic strategy to the
+GPU. It copies the triangle array to device memory, allocates a bit-packed grid
+on the GPU, launches one CUDA thread per triangle, and uses \texttt{atomicOr}
+for each candidate voxel bit. The result is copied back to the CPU and checked
+with the same occupancy metrics as the CPU modes.
+
+This version is intentionally minimal. It answers whether a direct GPU port of
+the current AABB algorithm is enough. It does not implement tile binning,
+block-private grids, prefix sums, or sparse structures.
+
 \section{Experimental Methodology}
 
 The measured region is \texttt{voxel\_seconds}. For each mode, the baseline
@@ -230,6 +245,27 @@ work correctly with direct \texttt{srun} execution for this program. The stable
 approach was to reserve resources with Slurm and use \texttt{mpirun} inside the
 allocation.
 
+\begin{table}[t]
+    \centering
+    \caption{Khipu GPU debug results for the blocky model.}
+    \begin{tabular}{lrrr}
+        \toprule
+        Mode & $r$ & $T_p$ (s) & Tested voxels \\
+        \midrule
+        MPI $p=1$ & 128 & 0.000639 & 277944 \\
+        OMP atomic $t=4$ & 128 & 0.002261 & 277944 \\
+        CUDA atomic & 128 & 0.311759 & 277944 \\
+        MPI $p=1$ & 512 & 0.022754 & 4380856 \\
+        OMP atomic $t=4$ & 512 & 0.042784 & 4380856 \\
+        CUDA atomic & 512 & 0.410128 & 4380856 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The CUDA prototype produced the same occupied voxel counts as the CPU versions,
+but it was slower for the tested small and medium cases. This supports the
+decision not to use this direct CUDA port as the main delivery.
+
 \section{Discussion}
 
 The results show that increasing $p$ does not always reduce execution time. For
@@ -259,10 +295,11 @@ such as binning, BVH, octrees, or sparse grids.
 
 \subsection{Why CUDA Was Not the Main Delivery}
 
-CUDA is technically attractive, especially when a local GPU is available, but
-the limiting issue is not only whether a kernel can be launched. A correct GPU
-version needs a memory layout, atomic or block-local reductions for bit updates,
-host-device transfer timing, and output validation against the CPU
+CUDA is technically attractive, especially when a local GPU is available, and
+the implemented \texttt{cuda\_atomic} prototype confirms that the project can run
+on Khipu's Tesla T4 GPU. However, the limiting issue is not only whether a
+kernel can be launched. A fast GPU version needs a better memory layout, less
+atomic contention, transfer timing, and output validation against the CPU
 implementation.
 
 The memory cost also grows quickly for dense grids. A bit-packed grid requires
@@ -275,20 +312,22 @@ grid, about $r=2953$ with four private grids, and about $r=2344$ with eight
 private grids, before counting triangles, auxiliary buffers, CUDA runtime
 overhead, and temporary reductions.
 
-Therefore, a CUDA implementation is reasonable future work only if paired with
-a carefully chosen memory strategy and a validation plan. For this delivery,
-MPI and OpenMP provide a simpler and more defensible comparison of distributed
-and shared memory overheads.
+Therefore, CUDA is reasonable future work only if paired with a better memory
+strategy, such as tile binning, block-level reductions, or sparse grids. For this
+delivery, MPI and OpenMP remain the main defensible comparison of distributed
+and shared memory overheads, while \texttt{cuda\_atomic} is reported as a
+validated but non-competitive prototype.
 
 \section{Conclusion}
 
-The final implementation keeps MPI as the main solution and adds OpenMP
-variants for comparison. The experiments confirm that overhead is central to
-the analysis: for small grids, parallelism can lose to overhead, while for
-larger fixed grids some configurations obtain speedup. Future work should
-replace the AABB marking approximation with a triangle-box test, implement
-tile-based partitioning with spatial filtering, and evaluate CUDA only when GPU
-execution can be validated against the CPU outputs.
+The final implementation keeps MPI as the main solution, adds OpenMP variants
+for comparison, and includes a minimal CUDA atomic prototype. The experiments
+confirm that overhead is central to the analysis: for small grids, parallelism
+can lose to overhead, while for larger fixed grids some configurations obtain
+speedup. The CUDA prototype validates GPU execution but shows that a direct
+atomic port is not enough for these inputs. Future work should replace the AABB
+marking approximation with a triangle-box test and implement tile-based GPU
+partitioning with spatial filtering.
 
 \section*{Use of AI}
 
